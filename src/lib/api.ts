@@ -61,6 +61,11 @@ export async function fetchStudents(classId: string): Promise<Student[]> {
   );
 }
 
+/** Henter alle elever på tvers av klasser (til venstremenyen). */
+export async function fetchAllStudents(): Promise<Student[]> {
+  return unwrap(supabase.from("students").select("*").order("name", { ascending: true }));
+}
+
 export async function addStudents(
   classId: string,
   names: string[],
@@ -122,9 +127,11 @@ export interface GenerateResult {
 /**
  * Genererer et nytt klassekart for klassen: henter elever og gjeldende
  * par-historikk, kjører seteplasseringsalgoritmen (som minimerer gjentatte
- * elevpar), lagrer det nye kartet og oppdaterer historikken.
+ * elevpar), lagrer det nye kartet og oppdaterer historikken. `rows`/`cols`
+ * er antall pult-rader og pult-kolonner i klasserommet (hver pult har
+ * plass til to elever).
  */
-export async function generateAndSaveChart(classId: string, groupSize: number): Promise<GenerateResult> {
+export async function generateAndSaveChart(classId: string, rows: number, cols: number): Promise<GenerateResult> {
   const [students, historyRows] = await Promise.all([
     fetchStudents(classId),
     fetchPairHistory(classId),
@@ -135,13 +142,13 @@ export async function generateAndSaveChart(classId: string, groupSize: number): 
   }
 
   const historyMap = buildHistoryMap(historyRows);
-  const layout = generateSeatingChart(students, groupSize, historyMap);
+  const layout = generateSeatingChart(students, rows * cols, historyMap);
   const { newPairs, totalPairs } = countNewPairs(layout, historyMap);
 
   const chart = await unwrap<SeatingChart>(
     supabase
       .from("seating_charts")
-      .insert({ class_id: classId, group_size: groupSize, layout })
+      .insert({ class_id: classId, rows, cols, layout })
       .select()
       .single()
   );
