@@ -1,4 +1,8 @@
-import type { PairHistoryRow, SeatingLayout, Student } from "./types";
+import { SEATS_PER_DESK } from "./classroom";
+import type { PairHistoryRow, Student } from "./types";
+
+/** Elevfordeling som en liste av pulter, hver med inntil to elev-id-er. */
+export type SeatingGroups = string[][];
 
 /** Kanonisk nøkkel for et elevpar, uavhengig av rekkefølge. */
 export function pairKey(a: string, b: string): string {
@@ -32,23 +36,19 @@ function groupCost(group: string[], historyMap: Map<string, number>): number {
   return cost;
 }
 
-/** Antall elever per pult (klasserommet har topulter, som i klassekartet.no). */
-export const SEATS_PER_DESK = 2;
-
 /**
  * Genererer et nytt klassekart: fordeler elever på `numDesks` topulter og
  * bruker simulert herding (simulated annealing) for å minimere hvor mange
  * ganger de samme elevene har sittet sammen før. Elevene starter i
  * tilfeldig rekkefølge, så selv uten historikk blir hver generering
- * forskjellig. `numDesks` (rader × kolonner) må dekke minst
- * `Math.ceil(students.length / SEATS_PER_DESK)` pulter — overflødige pulter
- * blir stående tomme.
+ * forskjellig. Er det færre pulter enn elevene trenger, utvides antallet —
+ * overflødige pulter blir stående tomme.
  */
 export function generateSeatingChart(
   students: Student[],
   numDesks: number,
   historyMap: Map<string, number>
-): SeatingLayout {
+): SeatingGroups {
   if (students.length === 0) return [];
 
   const ids = shuffle(students.map((s) => s.id));
@@ -88,9 +88,9 @@ export function generateSeatingChart(
   return groups;
 }
 
-export function pairsFromLayout(layout: SeatingLayout): [string, string][] {
+export function pairsFromGroups(groups: SeatingGroups): [string, string][] {
   const pairs: [string, string][] = [];
-  for (const group of layout) {
+  for (const group of groups) {
     for (let i = 0; i < group.length; i++) {
       for (let j = i + 1; j < group.length; j++) {
         const a = group[i];
@@ -103,11 +103,11 @@ export function pairsFromLayout(layout: SeatingLayout): [string, string][] {
 }
 
 /** Antall par i kartet som ikke har sittet sammen før (basert på historikk før dette kartet). */
-export function countNewPairs(layout: SeatingLayout, historyMap: Map<string, number>): {
+export function countNewPairs(groups: SeatingGroups, historyMap: Map<string, number>): {
   newPairs: number;
   totalPairs: number;
 } {
-  const pairs = pairsFromLayout(layout);
+  const pairs = pairsFromGroups(groups);
   const newPairs = pairs.filter(([a, b]) => !(historyMap.get(pairKey(a, b)) ?? 0)).length;
   return { newPairs, totalPairs: pairs.length };
 }

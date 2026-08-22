@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useParams } from "next/navigation";
 import {
   fetchChartHistory,
@@ -10,56 +10,46 @@ import {
   fetchStudents,
   generateAndSaveChart,
   updateDefaultContactTeacher,
+  updateDesks,
 } from "@/lib/api";
-import { SEATS_PER_DESK } from "@/lib/seating";
-import type { PairHistoryRow, SchoolClass, SeatingChart, Student } from "@/lib/types";
+import {
+  SEATS_PER_DESK,
+  addColumn,
+  addDesk,
+  addRow,
+  ensureCapacity,
+  makeGrid,
+  tidyDesks,
+} from "@/lib/classroom";
+import type { Desk, PairHistoryRow, SchoolClass, SeatingChart, Student } from "@/lib/types";
 import ConfigWarning from "@/components/ConfigWarning";
 import StudentManager from "@/components/StudentManager";
-import ClassroomView from "@/components/ClassroomView";
+import ClassroomCanvas from "@/components/ClassroomCanvas";
 import PairHeatmap from "@/components/PairHeatmap";
 import { isSupabaseConfigured } from "@/lib/supabase";
 
-type Tab = "kart" | "oversikt" | "historikk";
+type Tab = "elever" | "oversikt" | "historikk";
 
-function defaultGrid(studentCount: number): { rows: number; cols: number } {
-  const minDesks = Math.max(1, Math.ceil(studentCount / SEATS_PER_DESK));
-  const cols = Math.max(1, Math.ceil(Math.sqrt(minDesks)));
-  const rows = Math.max(1, Math.ceil(minDesks / cols));
-  return { rows, cols };
-}
+const DEFAULT_ROWS = 3;
+const DEFAULT_COLS = 3;
 
-function Stepper({
-  label,
-  value,
-  onChange,
+function ToolbarButton({
+  onClick,
+  children,
+  disabled,
 }: {
-  label: string;
-  value: number;
-  onChange: (next: number) => void;
+  onClick: () => void;
+  children: React.ReactNode;
+  disabled?: boolean;
 }) {
   return (
-    <div className="flex flex-col gap-1 text-sm">
-      {label}
-      <div className="flex items-center gap-1 rounded-md border border-border bg-surface">
-        <button
-          type="button"
-          onClick={() => onChange(Math.max(1, value - 1))}
-          className="px-2.5 py-1.5 text-muted hover:text-foreground"
-          aria-label={`Færre ${label.toLowerCase()}`}
-        >
-          −
-        </button>
-        <span className="w-6 text-center tabular-nums">{value}</span>
-        <button
-          type="button"
-          onClick={() => onChange(value + 1)}
-          className="px-2.5 py-1.5 text-muted hover:text-foreground"
-          aria-label={`Flere ${label.toLowerCase()}`}
-        >
-          +
-        </button>
-      </div>
-    </div>
+    <button
+      onClick={onClick}
+      disabled={disabled}
+      className="rounded-md border border-border bg-surface-raised px-3 py-1.5 text-sm font-medium hover:border-accent/50 hover:text-accent disabled:opacity-50"
+    >
+      {children}
+    </button>
   );
 }
 
@@ -75,14 +65,17 @@ export default function ClassDetailPage() {
   const [loading, setLoading] = useState(isSupabaseConfigured);
   const [error, setError] = useState<string | null>(null);
 
-  const [tab, setTab] = useState<Tab>("kart");
-  const [rows, setRows] = useState(3);
-  const [cols, setCols] = useState(3);
+  const [desks, setDesks] = useState<Desk[]>([]);
+  const [deskCols, setDeskCols] = useState(DEFAULT_COLS);
+  const [tab, setTab] = useState<Tab>("elever");
   const [generating, setGenerating] = useState(false);
   const [lastResult, setLastResult] = useState<{ newPairs: number; totalPairs: number } | null>(null);
 
+  const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
   useEffect(() => {
     if (!isSupabaseConfigured || !classId) return;
+    let cancelled = false;
     Promise.all([
       fetchClass(classId),
       fetchStudents(classId),
@@ -90,25 +83,73 @@ export default function ClassDetailPage() {
       fetchLatestChart(classId),
     ])
       .then(([cls, studs, history, chart]) => {
+        if (cancelled) return;
         setSchoolClass(cls);
         setStudents(studs);
         setHistoryRows(history);
         setCurrentChart(chart);
-        if (chart) {
-          setRows(chart.rows);
-          setCols(chart.cols);
-        } else if (studs.length > 0) {
-          const grid = defaultGrid(studs.length);
-          setRows(grid.rows);
-          setCols(grid.cols);
+        setDeskCols(cls.desk_cols || DEFAULT_COLS);
+
+        const existing = Array.isArray(cls.desks) ? cls.desks : [];
+        if (existing.length > 0) {
+          setDesks(existing);
+        } else {
+          // Nytt klasserom: start med et ryddig rutenett som dekker klassen.
+          const cols = cls.desk_cols || DEFAULT_COLS;
+          const starter = ensureCapacity(makeGrid(DEFAULT_ROWS, cols), studs.length, cols);
+          setDesks(starter);
+          updateDesks(classId, starter, cols).catch(() => {});
         }
       })
-      .catch((e) => setError(e instanceof Error ? e.message : String(e)))
-      .finally(() => setLoading(false));
+      .catch((e) => {
+        if (!cancelled) setError(e instanceof Error ? e.message : String(e));
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
   }, [classId]);
 
+  useEffect(() => {
+    return () => {
+      if (saveTimer.current) clearTimeout(saveTimer.current);
+    };
+  }, []);
+
   const studentsById = useMemo(() => new Map(students.map((s) => [s.id, s])), [students]);
-  const capacity = rows * cols * SEATS_PER_DESK;
+  const capacity = desks.length * SEATS_PER_DESK;
+
+  const persistDesks = useCallback(
+    (next: Desk[], cols: number) => {
+      if (saveTimer.current) clearTimeout(saveTimer.current);
+      saveTimer.current = setTimeout(() => {
+        updateDesks(classId, next, cols).catch((e) =>
+          setError(e instanceof Error ? e.message : String(e))
+        );
+      }, 300);
+    },
+    [classId]
+  );
+
+  const handleDesksChange = useCallback(
+    (next: Desk[], persist: boolean) => {
+      setDesks(next);
+      if (persist) persistDesks(next, deskCols);
+    },
+    [deskCols, persistDesks]
+  );
+
+  function applyDesks(next: Desk[], cols = deskCols) {
+    setDesks(next);
+    setDeskCols(cols);
+    persistDesks(next, cols);
+  }
+
+  function handleRemoveDesk(deskId: string) {
+    applyDesks(desks.filter((d) => d.id !== deskId));
+  }
 
   async function handleDefaultContactTeacherChange(value: string) {
     const trimmed = value.trim() || null;
@@ -126,13 +167,16 @@ export default function ClassDetailPage() {
     setError(null);
     setLastResult(null);
     try {
-      const { chart, newPairs, totalPairs } = await generateAndSaveChart(classId, rows, cols);
+      // Sørg for at det finnes nok pulter til alle elevene før vi genererer.
+      const enough = ensureCapacity(desks, students.length, deskCols);
+      if (enough.length !== desks.length) applyDesks(enough);
+
+      const { chart, newPairs, totalPairs } = await generateAndSaveChart(classId, enough);
       setCurrentChart(chart);
       setLastResult({ newPairs, totalPairs });
       const refreshedHistory = await fetchPairHistory(classId);
       setHistoryRows(refreshedHistory);
       setChartHistory([]); // tving ny henting neste gang fanen åpnes
-      setTab("kart");
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
@@ -158,7 +202,7 @@ export default function ClassDetailPage() {
 
   return (
     <div>
-      <div className="mb-6 flex flex-wrap items-end justify-between gap-2">
+      <div className="mb-4 flex flex-wrap items-end justify-between gap-2">
         <h1 className="text-2xl font-bold">{schoolClass.name}</h1>
         <label className="flex flex-col gap-1 text-sm">
           Kontaktlærer (standard for nye elever)
@@ -177,45 +221,54 @@ export default function ClassDetailPage() {
         </div>
       )}
 
-      <section className="mb-8">
-        <h2 className="mb-2 text-lg font-semibold">Elever</h2>
-        <StudentManager
-          classId={classId}
-          students={students}
-          defaultContactTeacher={schoolClass.default_contact_teacher}
-          onChange={setStudents}
-        />
-      </section>
+      <div className="mb-3 flex flex-wrap items-center gap-2">
+        <ToolbarButton onClick={() => applyDesks(addRow(desks, deskCols))}>+ Rad</ToolbarButton>
+        <ToolbarButton
+          onClick={() => {
+            const next = addColumn(desks, deskCols);
+            applyDesks(next.desks, next.cols);
+          }}
+        >
+          + Kolonne
+        </ToolbarButton>
+        <ToolbarButton onClick={() => applyDesks(addDesk(desks, deskCols))}>+ Pult</ToolbarButton>
+        <ToolbarButton onClick={() => applyDesks(tidyDesks(desks, deskCols))} disabled={desks.length === 0}>
+          Rydd opp
+        </ToolbarButton>
 
-      <section className="mb-6">
-        <h2 className="mb-2 text-lg font-semibold">Klasserom</h2>
-        <div className="mb-3 flex flex-wrap items-end gap-3">
-          <Stepper label="Rader" value={rows} onChange={setRows} />
-          <Stepper label="Kolonner" value={cols} onChange={setCols} />
-          <button
-            onClick={handleGenerate}
-            disabled={generating || students.length === 0}
-            className="rounded-md bg-accent px-4 py-2 text-sm font-medium text-white hover:bg-accent-hover disabled:opacity-50"
-          >
-            {generating ? "Genererer …" : "Generer klassekart"}
-          </button>
-          {lastResult && (
-            <p className="text-sm text-muted">
-              {lastResult.newPairs} av {lastResult.totalPairs} elevpar sitter sammen for første gang.
-            </p>
-          )}
-        </div>
-        {students.length > capacity && (
-          <p className="mb-3 text-xs text-subtle">
-            {rows} × {cols} pulter gir kun plass til {capacity} elever — utvider automatisk med flere rader
-            ved generering.
-          </p>
+        <span className="mx-1 h-5 w-px bg-border" aria-hidden />
+
+        <button
+          onClick={handleGenerate}
+          disabled={generating || students.length === 0}
+          className="rounded-md bg-accent px-4 py-1.5 text-sm font-medium text-white hover:bg-accent-hover disabled:opacity-50"
+        >
+          {generating ? "Genererer …" : "Generer klassekart"}
+        </button>
+
+        <span className="text-xs text-subtle">
+          {desks.length} pulter · {capacity} plasser · {students.length} elever
+        </span>
+        {lastResult && (
+          <span className="text-xs text-muted">
+            {lastResult.newPairs} av {lastResult.totalPairs} elevpar sitter sammen for første gang.
+          </span>
         )}
+      </div>
 
+      <ClassroomCanvas
+        desks={desks}
+        assignments={currentChart?.layout ?? {}}
+        studentsById={studentsById}
+        onDesksChange={handleDesksChange}
+        onRemoveDesk={handleRemoveDesk}
+      />
+
+      <section className="mt-8">
         <div className="mb-4 flex gap-1 border-b border-border text-sm">
           {(
             [
-              ["kart", "Klassekart"],
+              ["elever", "Elever"],
               ["oversikt", "Oversikt over par"],
               ["historikk", "Tidligere kart"],
             ] as [Tab, string][]
@@ -232,11 +285,12 @@ export default function ClassDetailPage() {
           ))}
         </div>
 
-        {tab === "kart" && (
-          <ClassroomView
-            layout={currentChart?.layout ?? []}
-            cols={currentChart?.cols ?? cols}
-            studentsById={studentsById}
+        {tab === "elever" && (
+          <StudentManager
+            classId={classId}
+            students={students}
+            defaultContactTeacher={schoolClass.default_contact_teacher}
+            onChange={setStudents}
           />
         )}
 
@@ -250,14 +304,13 @@ export default function ClassDetailPage() {
               chartHistory.map((chart) => (
                 <li key={chart.id}>
                   <button
-                    onClick={() => {
-                      setCurrentChart(chart);
-                      setTab("kart");
-                    }}
+                    onClick={() => setCurrentChart(chart)}
                     className="w-full rounded-md border border-border px-3 py-2 text-left hover:bg-surface-raised"
                   >
-                    {new Date(chart.created_at).toLocaleString("no-NO")} &mdash; {chart.rows} × {chart.cols}{" "}
-                    pulter
+                    {new Date(chart.created_at).toLocaleString("no-NO")}
+                    {chart.id === currentChart?.id && (
+                      <span className="ml-2 text-xs text-accent">vises nå</span>
+                    )}
                   </button>
                 </li>
               ))

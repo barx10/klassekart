@@ -1,8 +1,10 @@
 "use client";
 
 import { supabase } from "./supabase";
-import { buildHistoryMap, countNewPairs, generateSeatingChart, pairsFromLayout } from "./seating";
+import { buildHistoryMap, countNewPairs, generateSeatingChart, pairsFromGroups } from "./seating";
 import type {
+  Desk,
+  DeskAssignments,
   Gender,
   PairHistoryRow,
   SchoolClass,
@@ -48,6 +50,13 @@ export async function deleteClass(id: string): Promise<void> {
 export async function updateDefaultContactTeacher(id: string, name: string | null): Promise<SchoolClass> {
   return unwrap(
     supabase.from("classes").update({ default_contact_teacher: name }).eq("id", id).select().single()
+  );
+}
+
+/** Lagrer klasserommets pultoppsett (posisjoner + rutenettbredde). */
+export async function updateDesks(id: string, desks: Desk[], deskCols: number): Promise<SchoolClass> {
+  return unwrap(
+    supabase.from("classes").update({ desks, desk_cols: deskCols }).eq("id", id).select().single()
   );
 }
 
@@ -127,11 +136,10 @@ export interface GenerateResult {
 /**
  * Genererer et nytt klassekart for klassen: henter elever og gjeldende
  * par-historikk, kjører seteplasseringsalgoritmen (som minimerer gjentatte
- * elevpar), lagrer det nye kartet og oppdaterer historikken. `rows`/`cols`
- * er antall pult-rader og pult-kolonner i klasserommet (hver pult har
- * plass til to elever).
+ * elevpar), lagrer det nye kartet og oppdaterer historikken. Elevene
+ * fordeles på pultene læreren har satt opp i klasserommet.
  */
-export async function generateAndSaveChart(classId: string, rows: number, cols: number): Promise<GenerateResult> {
+export async function generateAndSaveChart(classId: string, desks: Desk[]): Promise<GenerateResult> {
   const [students, historyRows] = await Promise.all([
     fetchStudents(classId),
     fetchPairHistory(classId),
@@ -140,21 +148,30 @@ export async function generateAndSaveChart(classId: string, rows: number, cols: 
   if (students.length === 0) {
     throw new Error("Klassen har ingen elever ennå.");
   }
+  if (desks.length === 0) {
+    throw new Error("Klasserommet har ingen pulter ennå.");
+  }
 
   const historyMap = buildHistoryMap(historyRows);
-  const layout = generateSeatingChart(students, rows * cols, historyMap);
-  const { newPairs, totalPairs } = countNewPairs(layout, historyMap);
+  const groups = generateSeatingChart(students, desks.length, historyMap);
+  const { newPairs, totalPairs } = countNewPairs(groups, historyMap);
+
+  const layout: DeskAssignments = {};
+  groups.forEach((group, i) => {
+    const desk = desks[i];
+    if (desk && group.length > 0) layout[desk.id] = group;
+  });
 
   const chart = await unwrap<SeatingChart>(
     supabase
       .from("seating_charts")
-      .insert({ class_id: classId, rows, cols, layout })
+      .insert({ class_id: classId, layout })
       .select()
       .single()
   );
 
   const now = new Date().toISOString();
-  const pairs = pairsFromLayout(layout);
+  const pairs = pairsFromGroups(groups);
   if (pairs.length > 0) {
     const existing = new Map(historyRows.map((r) => [`${r.student_a_id}_${r.student_b_id}`, r]));
     const upsertRows = pairs.map(([a, b]) => {
