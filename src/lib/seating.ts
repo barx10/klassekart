@@ -1,7 +1,7 @@
-import { SEATS_PER_DESK } from "./classroom";
+import { DEFAULT_SEATS } from "./classroom";
 import type { PairHistoryRow, Student } from "./types";
 
-/** Elevfordeling som en liste av pulter, hver med inntil to elev-id-er. */
+/** Elevfordeling som en liste av pulter, hver med elevene som sitter der. */
 export type SeatingGroups = string[][];
 
 /** Kanonisk nøkkel for et elevpar, uavhengig av rekkefølge. */
@@ -37,25 +37,40 @@ function groupCost(group: string[], historyMap: Map<string, number>): number {
 }
 
 /**
- * Genererer et nytt klassekart: fordeler elever på `numDesks` topulter og
+ * Genererer et nytt klassekart: fordeler elevene på pultene i klasserommet og
  * bruker simulert herding (simulated annealing) for å minimere hvor mange
- * ganger de samme elevene har sittet sammen før. Elevene starter i
- * tilfeldig rekkefølge, så selv uten historikk blir hver generering
- * forskjellig. Er det færre pulter enn elevene trenger, utvides antallet —
- * overflødige pulter blir stående tomme.
+ * ganger de samme elevene har sittet sammen før. Elevene starter i tilfeldig
+ * rekkefølge, så selv uten historikk blir hver generering forskjellig.
+ *
+ * `capacities` er antall plasser ved hver pult (1 = enkeltpult, 2 = topult,
+ * 3-4 = bordgruppe), i samme rekkefølge som pultene. Er det færre plasser enn
+ * elever, legges det til topulter på slutten; er det flere, blir plassene
+ * stående tomme. Byttene under herdingen holder gruppestørrelsene uendret, så
+ * ingen pult blir overfylt.
  */
 export function generateSeatingChart(
   students: Student[],
-  numDesks: number,
+  capacities: number[],
   historyMap: Map<string, number>
 ): SeatingGroups {
   if (students.length === 0) return [];
 
   const ids = shuffle(students.map((s) => s.id));
-  const minDesks = Math.ceil(ids.length / SEATS_PER_DESK);
-  const numGroups = Math.max(1, numDesks, minDesks);
-  const groups: string[][] = Array.from({ length: numGroups }, () => []);
-  ids.forEach((id, i) => groups[Math.floor(i / SEATS_PER_DESK)].push(id));
+
+  const caps = capacities.length > 0 ? capacities.map((c) => Math.max(1, c)) : [DEFAULT_SEATS];
+  let available = caps.reduce((sum, c) => sum + c, 0);
+  while (available < ids.length) {
+    caps.push(DEFAULT_SEATS);
+    available += DEFAULT_SEATS;
+  }
+
+  const numGroups = caps.length;
+  const groups: string[][] = caps.map(() => []);
+  let deskIndex = 0;
+  for (const id of ids) {
+    while (groups[deskIndex].length >= caps[deskIndex]) deskIndex++;
+    groups[deskIndex].push(id);
+  }
 
   const iterations = Math.max(800, ids.length * 80);
 
