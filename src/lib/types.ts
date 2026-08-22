@@ -1,10 +1,15 @@
 export type Gender = "jente" | "gutt" | "annet";
 
-/** En pult i klasserommet, fritt plassert med piksel-koordinater. */
+/**
+ * En pult i klasserommet, fritt plassert med piksel-koordinater.
+ * `seats` er hvor mange elever som får plass ved pulten (1 = enkeltpult,
+ * 2 = topult, 3-4 = bordgruppe).
+ */
 export interface Desk {
   id: string;
   x: number;
   y: number;
+  seats: number;
 }
 
 /** Hvilke elever som sitter ved hvilken pult: pult-id -> elev-id-er (maks 2). */

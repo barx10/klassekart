@@ -1,6 +1,7 @@
 "use client";
 
 import { supabase } from "./supabase";
+import { makeGrid } from "./classroom";
 import { buildHistoryMap, countNewPairs, generateSeatingChart, pairsFromGroups } from "./seating";
 import type {
   Desk,
@@ -33,10 +34,17 @@ export async function fetchClass(id: string): Promise<SchoolClass> {
 }
 
 export async function createClass(name: string, defaultContactTeacher?: string): Promise<SchoolClass> {
+  // Nye klasser starter med et ryddig klasserom læreren kan dra om på.
+  const desks = makeGrid(3, 3);
   return unwrap(
     supabase
       .from("classes")
-      .insert({ name, default_contact_teacher: defaultContactTeacher || null })
+      .insert({
+        name,
+        default_contact_teacher: defaultContactTeacher || null,
+        desks,
+        desk_cols: 3,
+      })
       .select()
       .single()
   );
@@ -153,7 +161,7 @@ export async function generateAndSaveChart(classId: string, desks: Desk[]): Prom
   }
 
   const historyMap = buildHistoryMap(historyRows);
-  const groups = generateSeatingChart(students, desks.length, historyMap);
+  const groups = generateSeatingChart(students, desks.map((d) => d.seats), historyMap);
   const { newPairs, totalPairs } = countNewPairs(groups, historyMap);
 
   const layout: DeskAssignments = {};
