@@ -85,7 +85,28 @@ alter table students enable row level security;
 alter table seating_charts enable row level security;
 alter table pair_history enable row level security;
 
-create policy "Allow all on classes" on classes for all using (true) with check (true);
-create policy "Allow all on students" on students for all using (true) with check (true);
-create policy "Allow all on seating_charts" on seating_charts for all using (true) with check (true);
-create policy "Allow all on pair_history" on pair_history for all using (true) with check (true);
+do $$
+begin
+  if not exists (select 1 from pg_policies where tablename = 'classes' and policyname = 'Allow all on classes') then
+    create policy "Allow all on classes" on classes for all using (true) with check (true);
+  end if;
+  if not exists (select 1 from pg_policies where tablename = 'students' and policyname = 'Allow all on students') then
+    create policy "Allow all on students" on students for all using (true) with check (true);
+  end if;
+  if not exists (select 1 from pg_policies where tablename = 'seating_charts' and policyname = 'Allow all on seating_charts') then
+    create policy "Allow all on seating_charts" on seating_charts for all using (true) with check (true);
+  end if;
+  if not exists (select 1 from pg_policies where tablename = 'pair_history' and policyname = 'Allow all on pair_history') then
+    create policy "Allow all on pair_history" on pair_history for all using (true) with check (true);
+  end if;
+end $$;
+
+-- ---------------------------------------------------------------------------
+-- Grants: RLS-policyene over avgjør *hvilke* rader som er synlige, men
+-- Postgres krever i tillegg grunnleggende table-rettigheter for at
+-- anon/authenticated-rollene skal få lov til å spørre tabellene i det hele
+-- tatt. Noen nyere Supabase-prosjekter mangler disse som standard.
+-- ---------------------------------------------------------------------------
+grant usage on schema public to anon, authenticated;
+grant select, insert, update, delete on all tables in schema public to anon, authenticated;
+alter default privileges in schema public grant select, insert, update, delete on tables to anon, authenticated;
