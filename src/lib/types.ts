@@ -3,10 +3,7 @@ export type Gender = "jente" | "gutt" | "annet";
 export interface SchoolClass {
   id: string;
   name: string;
-  contact_teacher_name: string | null;
-  contact_teacher_email: string | null;
-  contact_teacher_phone: string | null;
-  contact_teacher_note: string | null;
+  default_contact_teacher: string | null;
   created_at: string;
 }
 
@@ -15,6 +12,7 @@ export interface Student {
   class_id: string;
   name: string;
   gender: Gender;
+  contact_teacher: string | null;
   created_at: string;
 }
 

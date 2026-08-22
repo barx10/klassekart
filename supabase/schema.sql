@@ -5,30 +5,41 @@
 create extension if not exists "pgcrypto";
 
 -- ---------------------------------------------------------------------------
--- classes: en skoleklasse, inkl. kontaktlærer-info
+-- classes: en skoleklasse
 -- ---------------------------------------------------------------------------
 create table if not exists classes (
   id uuid primary key default gen_random_uuid(),
   name text not null,
-  contact_teacher_name text,
-  contact_teacher_email text,
-  contact_teacher_phone text,
-  contact_teacher_note text,
+  default_contact_teacher text,
   created_at timestamptz not null default now()
 );
 
 -- ---------------------------------------------------------------------------
--- students: elever i en klasse
+-- students: elever i en klasse. contact_teacher er kontaktlæreren til denne
+-- eleven (klasser kan ha flere kontaktlærere for ulike elever).
 -- ---------------------------------------------------------------------------
 create table if not exists students (
   id uuid primary key default gen_random_uuid(),
   class_id uuid not null references classes(id) on delete cascade,
   name text not null,
   gender text not null default 'annet' check (gender in ('jente', 'gutt', 'annet')),
+  contact_teacher text,
   created_at timestamptz not null default now()
 );
 
 create index if not exists students_class_id_idx on students(class_id);
+
+-- ---------------------------------------------------------------------------
+-- Migrering fra tidligere skjemaversjon (trygt å kjøre på nytt / mot en
+-- database som allerede har den gamle strukturen med
+-- contact_teacher_name/email/phone/note på classes).
+-- ---------------------------------------------------------------------------
+alter table classes add column if not exists default_contact_teacher text;
+alter table classes drop column if exists contact_teacher_name;
+alter table classes drop column if exists contact_teacher_email;
+alter table classes drop column if exists contact_teacher_phone;
+alter table classes drop column if exists contact_teacher_note;
+alter table students add column if not exists contact_teacher text;
 
 -- ---------------------------------------------------------------------------
 -- seating_charts: genererte klassekart (historikk over alle kart som er laget)

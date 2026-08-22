@@ -12,6 +12,7 @@ export default function DashboardPage() {
   const [loading, setLoading] = useState(isSupabaseConfigured);
   const [error, setError] = useState<string | null>(null);
   const [newName, setNewName] = useState("");
+  const [newContactTeacher, setNewContactTeacher] = useState("");
   const [creating, setCreating] = useState(false);
 
   useEffect(() => {
@@ -28,9 +29,10 @@ export default function DashboardPage() {
     setCreating(true);
     setError(null);
     try {
-      const created = await createClass(newName.trim());
+      const created = await createClass(newName.trim(), newContactTeacher.trim());
       setClasses((prev) => [...prev, created]);
       setNewName("");
+      setNewContactTeacher("");
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
@@ -61,11 +63,18 @@ export default function DashboardPage() {
         </div>
       )}
 
-      <form onSubmit={handleCreate} className="mb-6 flex gap-2">
+      <form onSubmit={handleCreate} className="mb-6 flex flex-wrap gap-2">
         <input
           value={newName}
           onChange={(e) => setNewName(e.target.value)}
           placeholder="Navn på ny klasse, f.eks. 5B"
+          className="w-full max-w-xs rounded-md border border-border bg-surface px-3 py-2 text-sm outline-none focus:border-accent"
+          disabled={!isSupabaseConfigured}
+        />
+        <input
+          value={newContactTeacher}
+          onChange={(e) => setNewContactTeacher(e.target.value)}
+          placeholder="Kontaktlærer (valgfritt)"
           className="w-full max-w-xs rounded-md border border-border bg-surface px-3 py-2 text-sm outline-none focus:border-accent"
           disabled={!isSupabaseConfigured}
         />
@@ -89,8 +98,11 @@ export default function DashboardPage() {
               key={c.id}
               className="flex items-center justify-between rounded-lg border border-border bg-surface-raised px-4 py-3"
             >
-              <Link href={`/klasser/${c.id}`} className="font-medium hover:text-accent">
-                {c.name}
+              <Link href={`/klasser/${c.id}`} className="hover:text-accent">
+                <span className="font-medium">{c.name}</span>
+                {c.default_contact_teacher && (
+                  <span className="ml-2 text-xs text-subtle">Kontaktlærer: {c.default_contact_teacher}</span>
+                )}
               </Link>
               <button
                 onClick={() => handleDelete(c.id)}

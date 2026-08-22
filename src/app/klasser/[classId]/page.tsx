@@ -10,10 +10,10 @@ import {
   fetchPairHistory,
   fetchStudents,
   generateAndSaveChart,
+  updateDefaultContactTeacher,
 } from "@/lib/api";
 import type { PairHistoryRow, SchoolClass, SeatingChart, Student } from "@/lib/types";
 import ConfigWarning from "@/components/ConfigWarning";
-import ContactTeacherModal from "@/components/ContactTeacherModal";
 import StudentManager from "@/components/StudentManager";
 import SeatingChartView from "@/components/SeatingChartView";
 import PairHeatmap from "@/components/PairHeatmap";
@@ -33,7 +33,6 @@ export default function ClassDetailPage() {
   const [loading, setLoading] = useState(isSupabaseConfigured);
   const [error, setError] = useState<string | null>(null);
 
-  const [showContactModal, setShowContactModal] = useState(false);
   const [tab, setTab] = useState<Tab>("kart");
   const [groupSize, setGroupSize] = useState(4);
   const [generating, setGenerating] = useState(false);
@@ -58,6 +57,17 @@ export default function ClassDetailPage() {
   }, [classId]);
 
   const studentsById = useMemo(() => new Map(students.map((s) => [s.id, s])), [students]);
+
+  async function handleDefaultContactTeacherChange(value: string) {
+    const trimmed = value.trim() || null;
+    if (!schoolClass || trimmed === schoolClass.default_contact_teacher) return;
+    try {
+      const updated = await updateDefaultContactTeacher(schoolClass.id, trimmed);
+      setSchoolClass(updated);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    }
+  }
 
   async function handleGenerate() {
     setGenerating(true);
@@ -110,15 +120,17 @@ export default function ClassDetailPage() {
         &larr; Tilbake til klasser
       </Link>
 
-      <div className="mt-2 mb-6 flex flex-wrap items-center justify-between gap-2">
+      <div className="mt-2 mb-6 flex flex-wrap items-end justify-between gap-2">
         <h1 className="text-2xl font-bold">{schoolClass.name}</h1>
-        <button
-          onClick={() => setShowContactModal(true)}
-          className="rounded-md border border-border px-3 py-1.5 text-sm font-medium hover:bg-surface-raised"
-        >
-          Kontaktlærer
-          {schoolClass.contact_teacher_name ? `: ${schoolClass.contact_teacher_name}` : ""}
-        </button>
+        <label className="flex flex-col gap-1 text-sm">
+          Kontaktlærer (standard for nye elever)
+          <input
+            defaultValue={schoolClass.default_contact_teacher ?? ""}
+            onBlur={(e) => handleDefaultContactTeacherChange(e.target.value)}
+            placeholder="Navn"
+            className="rounded-md border border-border bg-surface px-3 py-2 text-sm outline-none focus:border-accent"
+          />
+        </label>
       </div>
 
       {error && (
@@ -129,7 +141,12 @@ export default function ClassDetailPage() {
 
       <section className="mb-8">
         <h2 className="mb-2 text-lg font-semibold">Elever</h2>
-        <StudentManager classId={classId} students={students} onChange={setStudents} />
+        <StudentManager
+          classId={classId}
+          students={students}
+          defaultContactTeacher={schoolClass.default_contact_teacher}
+          onChange={setStudents}
+        />
       </section>
 
       <section className="mb-6">
@@ -215,14 +232,6 @@ export default function ClassDetailPage() {
           </ul>
         )}
       </section>
-
-      {showContactModal && (
-        <ContactTeacherModal
-          schoolClass={schoolClass}
-          onClose={() => setShowContactModal(false)}
-          onSaved={setSchoolClass}
-        />
-      )}
     </div>
   );
 }

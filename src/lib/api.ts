@@ -30,8 +30,14 @@ export async function fetchClass(id: string): Promise<SchoolClass> {
   return unwrap(supabase.from("classes").select("*").eq("id", id).single());
 }
 
-export async function createClass(name: string): Promise<SchoolClass> {
-  return unwrap(supabase.from("classes").insert({ name }).select().single());
+export async function createClass(name: string, defaultContactTeacher?: string): Promise<SchoolClass> {
+  return unwrap(
+    supabase
+      .from("classes")
+      .insert({ name, default_contact_teacher: defaultContactTeacher || null })
+      .select()
+      .single()
+  );
 }
 
 export async function deleteClass(id: string): Promise<void> {
@@ -39,16 +45,10 @@ export async function deleteClass(id: string): Promise<void> {
   if (error) throw new Error(error.message);
 }
 
-export async function updateContactTeacher(
-  id: string,
-  info: {
-    contact_teacher_name: string | null;
-    contact_teacher_email: string | null;
-    contact_teacher_phone: string | null;
-    contact_teacher_note: string | null;
-  }
-): Promise<SchoolClass> {
-  return unwrap(supabase.from("classes").update(info).eq("id", id).select().single());
+export async function updateDefaultContactTeacher(id: string, name: string | null): Promise<SchoolClass> {
+  return unwrap(
+    supabase.from("classes").update({ default_contact_teacher: name }).eq("id", id).select().single()
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -61,20 +61,19 @@ export async function fetchStudents(classId: string): Promise<Student[]> {
   );
 }
 
-export async function addStudent(classId: string, name: string, gender: Gender): Promise<Student> {
-  return unwrap(
-    supabase.from("students").insert({ class_id: classId, name, gender }).select().single()
-  );
-}
-
-export async function addStudents(classId: string, names: string[], gender: Gender): Promise<Student[]> {
-  const rows = names.map((name) => ({ class_id: classId, name, gender }));
+export async function addStudents(
+  classId: string,
+  names: string[],
+  gender: Gender,
+  contactTeacher: string | null
+): Promise<Student[]> {
+  const rows = names.map((name) => ({ class_id: classId, name, gender, contact_teacher: contactTeacher }));
   return unwrap(supabase.from("students").insert(rows).select());
 }
 
 export async function updateStudent(
   id: string,
-  fields: Partial<Pick<Student, "name" | "gender">>
+  fields: Partial<Pick<Student, "name" | "gender" | "contact_teacher">>
 ): Promise<Student> {
   return unwrap(supabase.from("students").update(fields).eq("id", id).select().single());
 }

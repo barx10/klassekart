@@ -1,14 +1,16 @@
 # Klassekart
 
 Enkelt verktøy for lærere til å generere klassekart (bordgrupper), holde
-oversikt over hvilke elever som har sittet sammen og hvor ofte, og lagre
-kontaktinfo for kontaktlærer per klasse.
+oversikt over hvilke elever som har sittet sammen og hvor ofte, og notere
+hvem som er kontaktlærer for de ulike elevene.
 
 ## Funksjoner
 
-- **Klasser** – opprett en eller flere klasser.
+- **Klasser** – opprett en eller flere klasser, med en valgfri
+  standard-kontaktlærer.
 - **Elever** – legg til flere elever samtidig (ett navn per linje), sett
-  kjønn (jente/gutt/annet) per elev.
+  kjønn (jente/gutt/annet) og kontaktlærer per elev direkte i skjemaet der du
+  legger dem inn (klassen kan ha flere kontaktlærere for ulike elever).
 - **Generer klassekart** – fordeler elevene i bordgrupper. Algoritmen
   (`src/lib/seating.ts`) bruker simulert herding for å minimere hvor mange
   ganger de samme elevene havner sammen igjen, basert på lagret historikk –
@@ -16,8 +18,6 @@ kontaktinfo for kontaktlærer per klasse.
 - **Oversikt over par** – en varmekart-matrise som viser hvor mange ganger
   hvert elevpar har sittet sammen.
 - **Tidligere kart** – bla gjennom tidligere genererte klassekart.
-- **Kontaktlærer** – modal for å lagre navn, e-post, telefon og notat for
-  kontaktlæreren til klassen.
 
 ## Teknologi
 
@@ -80,7 +80,7 @@ src/
   app/
     page.tsx                  Klasseoversikt (dashboard)
     klasser/[classId]/page.tsx Klassedetalj: elever, generering, oversikt
-  components/                 UI-komponenter (modal, elevliste, varmekart, ...)
+  components/                 UI-komponenter (elevliste, klassekart, varmekart, ...)
   lib/
     seating.ts                 Algoritme for å generere klassekart
     api.ts                     Datalag mot Supabase

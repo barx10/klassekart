@@ -8,12 +8,14 @@ import { genderOptions, genderLabel, genderBadgeClass } from "@/lib/gender";
 interface Props {
   classId: string;
   students: Student[];
+  defaultContactTeacher: string | null;
   onChange: (students: Student[]) => void;
 }
 
-export default function StudentManager({ classId, students, onChange }: Props) {
+export default function StudentManager({ classId, students, defaultContactTeacher, onChange }: Props) {
   const [bulkNames, setBulkNames] = useState("");
   const [bulkGender, setBulkGender] = useState<Gender>("annet");
+  const [bulkContactTeacher, setBulkContactTeacher] = useState(defaultContactTeacher ?? "");
   const [adding, setAdding] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -27,7 +29,7 @@ export default function StudentManager({ classId, students, onChange }: Props) {
     setAdding(true);
     setError(null);
     try {
-      const created = await addStudents(classId, names, bulkGender);
+      const created = await addStudents(classId, names, bulkGender, bulkContactTeacher.trim() || null);
       onChange([...students, ...created].sort((a, b) => a.name.localeCompare(b.name, "no")));
       setBulkNames("");
     } catch (e) {
@@ -60,6 +62,17 @@ export default function StudentManager({ classId, students, onChange }: Props) {
     }
   }
 
+  async function handleContactTeacherChange(student: Student, contactTeacher: string) {
+    const value = contactTeacher.trim() || null;
+    if (value === student.contact_teacher) return;
+    try {
+      const updated = await updateStudent(student.id, { contact_teacher: value });
+      onChange(students.map((s) => (s.id === student.id ? updated : s)));
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    }
+  }
+
   async function handleDelete(student: Student) {
     if (!confirm(`Fjerne ${student.name} fra klassen?`)) return;
     try {
@@ -85,7 +98,7 @@ export default function StudentManager({ classId, students, onChange }: Props) {
             className="rounded-md border border-border bg-surface px-3 py-2 text-sm outline-none focus:border-accent"
           />
         </label>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
           <label className="flex flex-col gap-1 text-sm">
             Kjønn
             <select
@@ -99,6 +112,15 @@ export default function StudentManager({ classId, students, onChange }: Props) {
                 </option>
               ))}
             </select>
+          </label>
+          <label className="flex flex-col gap-1 text-sm">
+            Kontaktlærer
+            <input
+              value={bulkContactTeacher}
+              onChange={(e) => setBulkContactTeacher(e.target.value)}
+              placeholder="Navn (valgfritt)"
+              className="rounded-md border border-border bg-surface px-3 py-2 text-sm outline-none focus:border-accent"
+            />
           </label>
           <button
             type="submit"
@@ -133,6 +155,12 @@ export default function StudentManager({ classId, students, onChange }: Props) {
                   </option>
                 ))}
               </select>
+              <input
+                defaultValue={s.contact_teacher ?? ""}
+                onBlur={(e) => handleContactTeacherChange(s, e.target.value)}
+                placeholder="Kontaktlærer"
+                className="min-w-0 flex-1 rounded-md border border-transparent bg-transparent px-2 py-1 text-sm text-muted hover:border-border focus:border-accent focus:bg-surface focus:text-foreground focus:outline-none"
+              />
               <button
                 onClick={() => handleDelete(s)}
                 aria-label={`Fjern ${s.name}`}
