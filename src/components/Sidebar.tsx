@@ -3,26 +3,24 @@
 import { useState } from "react";
 import Link from "next/link";
 import Image from "next/image";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { useAppData } from "@/lib/app-data";
+import { genderDotClass } from "@/lib/gender";
 
 export default function Sidebar() {
   const { classes, studentsByClass, loading, createClass } = useAppData();
   const pathname = usePathname();
-  const [expanded, setExpanded] = useState<Set<string>>(new Set());
+  const router = useRouter();
+  const [openClassId, setOpenClassId] = useState<string | null>(null);
   const [showForm, setShowForm] = useState(false);
   const [name, setName] = useState("");
   const [contact, setContact] = useState("");
   const [creating, setCreating] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  function toggle(id: string) {
-    setExpanded((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
-    });
+  function handleClassClick(id: string) {
+    setOpenClassId((prev) => (prev === id ? null : id));
+    router.push(`/klasser/${id}`);
   }
 
   async function handleCreate(e: React.FormEvent) {
@@ -31,10 +29,12 @@ export default function Sidebar() {
     setCreating(true);
     setError(null);
     try {
-      await createClass(name.trim(), contact.trim() || undefined);
+      const created = await createClass(name.trim(), contact.trim() || undefined);
       setName("");
       setContact("");
       setShowForm(false);
+      setOpenClassId(created.id);
+      router.push(`/klasser/${created.id}`);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
@@ -97,38 +97,39 @@ export default function Sidebar() {
           <ul className="flex flex-col gap-0.5">
             {classes.map((c) => {
               const isActive = pathname === `/klasser/${c.id}`;
+              const isOpen = openClassId === c.id;
               const studs = studentsByClass.get(c.id) ?? [];
-              const isExpanded = expanded.has(c.id);
               return (
                 <li key={c.id}>
-                  <div
-                    className={`flex items-center gap-1 rounded-md py-1.5 pr-2 pl-1 ${
+                  <button
+                    onClick={() => handleClassClick(c.id)}
+                    aria-expanded={isOpen}
+                    className={`flex w-full items-center gap-1.5 rounded-md px-2 py-1.5 text-left ${
                       isActive ? "bg-accent-soft text-accent" : "hover:bg-background"
                     }`}
                   >
-                    <button
-                      onClick={() => toggle(c.id)}
-                      aria-label={isExpanded ? `Skjul elever i ${c.name}` : `Vis elever i ${c.name}`}
-                      aria-expanded={isExpanded}
-                      className="shrink-0 px-1 text-subtle"
+                    <span
+                      className={`shrink-0 text-subtle transition-transform ${isOpen ? "rotate-90" : ""}`}
+                      aria-hidden
                     >
-                      <span className={`inline-block transition-transform ${isExpanded ? "rotate-90" : ""}`}>
-                        ›
-                      </span>
-                    </button>
-                    <Link href={`/klasser/${c.id}`} className="flex-1 truncate text-sm font-medium">
-                      {c.name}
-                    </Link>
+                      ›
+                    </span>
+                    <span className="flex-1 truncate text-sm font-medium">{c.name}</span>
                     <span className="shrink-0 text-xs text-subtle">{studs.length}</span>
-                  </div>
-                  {isExpanded && (
-                    <ul className="ml-6 flex flex-col gap-0.5 border-l border-border py-1 pl-2">
+                  </button>
+
+                  {isOpen && (
+                    <ul className="mt-0.5 mb-1 ml-4 flex flex-col gap-0.5 border-l border-border pl-3">
                       {studs.length === 0 ? (
-                        <li className="py-0.5 text-xs text-subtle">Ingen elever</li>
+                        <li className="py-1 text-xs text-subtle">Ingen elever</li>
                       ) : (
                         studs.map((s) => (
-                          <li key={s.id} className="truncate py-0.5 text-xs text-muted">
-                            {s.name}
+                          <li key={s.id} className="flex items-center gap-1.5 py-0.5">
+                            <span
+                              className={`h-1.5 w-1.5 shrink-0 rounded-full ${genderDotClass(s.gender)}`}
+                              aria-hidden
+                            />
+                            <span className="truncate text-xs text-muted">{s.name}</span>
                           </li>
                         ))
                       )}

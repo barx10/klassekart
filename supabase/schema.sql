@@ -5,12 +5,19 @@
 create extension if not exists "pgcrypto";
 
 -- ---------------------------------------------------------------------------
--- classes: en skoleklasse
+-- classes: en skoleklasse.
+-- desks er klasserommets pultoppsett: en liste med pulter som hver har en
+-- id og en fri x/y-posisjon (piksler), slik at læreren kan dra pultene dit
+-- de faktisk står i klasserommet:
+--   [{"id": "d1", "x": 16, "y": 16}, {"id": "d2", "x": 232, "y": 16}, ...]
+-- desk_cols husker hvor bred "Rydd opp"-rutenettet skal være.
 -- ---------------------------------------------------------------------------
 create table if not exists classes (
   id uuid primary key default gen_random_uuid(),
   name text not null,
   default_contact_teacher text,
+  desks jsonb not null default '[]'::jsonb,
+  desk_cols int not null default 3,
   created_at timestamptz not null default now()
 );
 
@@ -39,28 +46,29 @@ alter table classes drop column if exists contact_teacher_name;
 alter table classes drop column if exists contact_teacher_email;
 alter table classes drop column if exists contact_teacher_phone;
 alter table classes drop column if exists contact_teacher_note;
+alter table classes add column if not exists desks jsonb not null default '[]'::jsonb;
+alter table classes add column if not exists desk_cols int not null default 3;
 alter table students add column if not exists contact_teacher text;
 
 -- ---------------------------------------------------------------------------
 -- seating_charts: genererte klassekart (historikk over alle kart som er laget)
--- layout er en liste av topulter, hver pult er en liste med 1-2 student-id-er:
---   [["id1","id2"], ["id3","id4"], ...]
--- rows/cols er klasseromsoppsettet (antall pult-rader/-kolonner) kartet ble
--- generert for.
+-- layout kobler pult-id (fra classes.desks) til elevene som sitter der:
+--   {"d1": ["elev-id-1", "elev-id-2"], "d2": ["elev-id-3"], ...}
 -- ---------------------------------------------------------------------------
 create table if not exists seating_charts (
   id uuid primary key default gen_random_uuid(),
   class_id uuid not null references classes(id) on delete cascade,
-  rows int not null default 1,
-  cols int not null default 1,
   layout jsonb not null,
   created_at timestamptz not null default now()
 );
 
 create index if not exists seating_charts_class_id_idx on seating_charts(class_id);
 
-alter table seating_charts add column if not exists rows int not null default 1;
-alter table seating_charts add column if not exists cols int not null default 1;
+-- Eldre kart lagret pultene som en liste og hadde egne rows/cols-kolonner.
+-- Kartformatet endret seg, så gamle rader ryddes bort her.
+delete from seating_charts where jsonb_typeof(layout) = 'array';
+alter table seating_charts drop column if exists rows;
+alter table seating_charts drop column if exists cols;
 alter table seating_charts drop column if exists group_size;
 
 -- ---------------------------------------------------------------------------
