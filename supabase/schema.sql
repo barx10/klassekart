@@ -43,18 +43,25 @@ alter table students add column if not exists contact_teacher text;
 
 -- ---------------------------------------------------------------------------
 -- seating_charts: genererte klassekart (historikk over alle kart som er laget)
--- layout er en liste av bordgrupper, hver gruppe er en liste av student-id-er:
---   [["id1","id2","id3"], ["id4","id5","id6"], ...]
+-- layout er en liste av topulter, hver pult er en liste med 1-2 student-id-er:
+--   [["id1","id2"], ["id3","id4"], ...]
+-- rows/cols er klasseromsoppsettet (antall pult-rader/-kolonner) kartet ble
+-- generert for.
 -- ---------------------------------------------------------------------------
 create table if not exists seating_charts (
   id uuid primary key default gen_random_uuid(),
   class_id uuid not null references classes(id) on delete cascade,
-  group_size int not null,
+  rows int not null default 1,
+  cols int not null default 1,
   layout jsonb not null,
   created_at timestamptz not null default now()
 );
 
 create index if not exists seating_charts_class_id_idx on seating_charts(class_id);
+
+alter table seating_charts add column if not exists rows int not null default 1;
+alter table seating_charts add column if not exists cols int not null default 1;
+alter table seating_charts drop column if exists group_size;
 
 -- ---------------------------------------------------------------------------
 -- pair_history: hvor mange ganger (og sist) to elever har sittet i samme

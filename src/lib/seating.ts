@@ -32,23 +32,30 @@ function groupCost(group: string[], historyMap: Map<string, number>): number {
   return cost;
 }
 
+/** Antall elever per pult (klasserommet har topulter, som i klassekartet.no). */
+export const SEATS_PER_DESK = 2;
+
 /**
- * Genererer et nytt klassekart: fordeler elever i bordgrupper og bruker
- * simulert herding (simulated annealing) for å minimere hvor mange ganger
- * de samme elevene har sittet sammen før. Elevene starter i tilfeldig
- * rekkefølge, så selv uten historikk blir hver generering forskjellig.
+ * Genererer et nytt klassekart: fordeler elever på `numDesks` topulter og
+ * bruker simulert herding (simulated annealing) for å minimere hvor mange
+ * ganger de samme elevene har sittet sammen før. Elevene starter i
+ * tilfeldig rekkefølge, så selv uten historikk blir hver generering
+ * forskjellig. `numDesks` (rader × kolonner) må dekke minst
+ * `Math.ceil(students.length / SEATS_PER_DESK)` pulter — overflødige pulter
+ * blir stående tomme.
  */
 export function generateSeatingChart(
   students: Student[],
-  groupSize: number,
+  numDesks: number,
   historyMap: Map<string, number>
 ): SeatingLayout {
   if (students.length === 0) return [];
 
   const ids = shuffle(students.map((s) => s.id));
-  const numGroups = Math.max(1, Math.ceil(ids.length / groupSize));
+  const minDesks = Math.ceil(ids.length / SEATS_PER_DESK);
+  const numGroups = Math.max(1, numDesks, minDesks);
   const groups: string[][] = Array.from({ length: numGroups }, () => []);
-  ids.forEach((id, i) => groups[i % numGroups].push(id));
+  ids.forEach((id, i) => groups[Math.floor(i / SEATS_PER_DESK)].push(id));
 
   const iterations = Math.max(800, ids.length * 80);
 

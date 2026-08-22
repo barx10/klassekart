@@ -2,7 +2,6 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useParams } from "next/navigation";
-import Link from "next/link";
 import {
   fetchChartHistory,
   fetchClass,
@@ -12,14 +11,57 @@ import {
   generateAndSaveChart,
   updateDefaultContactTeacher,
 } from "@/lib/api";
+import { SEATS_PER_DESK } from "@/lib/seating";
 import type { PairHistoryRow, SchoolClass, SeatingChart, Student } from "@/lib/types";
 import ConfigWarning from "@/components/ConfigWarning";
 import StudentManager from "@/components/StudentManager";
-import SeatingChartView from "@/components/SeatingChartView";
+import ClassroomView from "@/components/ClassroomView";
 import PairHeatmap from "@/components/PairHeatmap";
 import { isSupabaseConfigured } from "@/lib/supabase";
 
 type Tab = "kart" | "oversikt" | "historikk";
+
+function defaultGrid(studentCount: number): { rows: number; cols: number } {
+  const minDesks = Math.max(1, Math.ceil(studentCount / SEATS_PER_DESK));
+  const cols = Math.max(1, Math.ceil(Math.sqrt(minDesks)));
+  const rows = Math.max(1, Math.ceil(minDesks / cols));
+  return { rows, cols };
+}
+
+function Stepper({
+  label,
+  value,
+  onChange,
+}: {
+  label: string;
+  value: number;
+  onChange: (next: number) => void;
+}) {
+  return (
+    <div className="flex flex-col gap-1 text-sm">
+      {label}
+      <div className="flex items-center gap-1 rounded-md border border-border bg-surface">
+        <button
+          type="button"
+          onClick={() => onChange(Math.max(1, value - 1))}
+          className="px-2.5 py-1.5 text-muted hover:text-foreground"
+          aria-label={`Færre ${label.toLowerCase()}`}
+        >
+          −
+        </button>
+        <span className="w-6 text-center tabular-nums">{value}</span>
+        <button
+          type="button"
+          onClick={() => onChange(value + 1)}
+          className="px-2.5 py-1.5 text-muted hover:text-foreground"
+          aria-label={`Flere ${label.toLowerCase()}`}
+        >
+          +
+        </button>
+      </div>
+    </div>
+  );
+}
 
 export default function ClassDetailPage() {
   const params = useParams<{ classId: string }>();
@@ -34,7 +76,8 @@ export default function ClassDetailPage() {
   const [error, setError] = useState<string | null>(null);
 
   const [tab, setTab] = useState<Tab>("kart");
-  const [groupSize, setGroupSize] = useState(4);
+  const [rows, setRows] = useState(3);
+  const [cols, setCols] = useState(3);
   const [generating, setGenerating] = useState(false);
   const [lastResult, setLastResult] = useState<{ newPairs: number; totalPairs: number } | null>(null);
 
@@ -51,12 +94,21 @@ export default function ClassDetailPage() {
         setStudents(studs);
         setHistoryRows(history);
         setCurrentChart(chart);
+        if (chart) {
+          setRows(chart.rows);
+          setCols(chart.cols);
+        } else if (studs.length > 0) {
+          const grid = defaultGrid(studs.length);
+          setRows(grid.rows);
+          setCols(grid.cols);
+        }
       })
       .catch((e) => setError(e instanceof Error ? e.message : String(e)))
       .finally(() => setLoading(false));
   }, [classId]);
 
   const studentsById = useMemo(() => new Map(students.map((s) => [s.id, s])), [students]);
+  const capacity = rows * cols * SEATS_PER_DESK;
 
   async function handleDefaultContactTeacherChange(value: string) {
     const trimmed = value.trim() || null;
@@ -74,7 +126,7 @@ export default function ClassDetailPage() {
     setError(null);
     setLastResult(null);
     try {
-      const { chart, newPairs, totalPairs } = await generateAndSaveChart(classId, groupSize);
+      const { chart, newPairs, totalPairs } = await generateAndSaveChart(classId, rows, cols);
       setCurrentChart(chart);
       setLastResult({ newPairs, totalPairs });
       const refreshedHistory = await fetchPairHistory(classId);
@@ -92,35 +144,21 @@ export default function ClassDetailPage() {
     setTab("historikk");
     if (chartHistory.length === 0) {
       try {
-        const rows = await fetchChartHistory(classId);
-        setChartHistory(rows);
+        const history = await fetchChartHistory(classId);
+        setChartHistory(history);
       } catch (e) {
         setError(e instanceof Error ? e.message : String(e));
       }
     }
   }
 
-  if (!isSupabaseConfigured) {
-    return (
-      <div>
-        <Link href="/" className="text-sm text-accent hover:underline">
-          &larr; Tilbake til klasser
-        </Link>
-        <ConfigWarning />
-      </div>
-    );
-  }
-
+  if (!isSupabaseConfigured) return <ConfigWarning />;
   if (loading) return <p className="text-sm text-muted">Laster …</p>;
   if (!schoolClass) return <p className="text-sm text-danger">Fant ikke klassen.</p>;
 
   return (
     <div>
-      <Link href="/" className="text-sm text-accent hover:underline">
-        &larr; Tilbake til klasser
-      </Link>
-
-      <div className="mt-2 mb-6 flex flex-wrap items-end justify-between gap-2">
+      <div className="mb-6 flex flex-wrap items-end justify-between gap-2">
         <h1 className="text-2xl font-bold">{schoolClass.name}</h1>
         <label className="flex flex-col gap-1 text-sm">
           Kontaktlærer (standard for nye elever)
@@ -150,28 +188,16 @@ export default function ClassDetailPage() {
       </section>
 
       <section className="mb-6">
-        <h2 className="mb-2 text-lg font-semibold">Generer klassekart</h2>
+        <h2 className="mb-2 text-lg font-semibold">Klasserom</h2>
         <div className="mb-3 flex flex-wrap items-end gap-3">
-          <label className="flex flex-col gap-1 text-sm">
-            Elever per bord
-            <select
-              value={groupSize}
-              onChange={(e) => setGroupSize(Number(e.target.value))}
-              className="rounded-md border border-border bg-surface px-3 py-2 text-sm outline-none focus:border-accent"
-            >
-              {[2, 3, 4, 5, 6].map((n) => (
-                <option key={n} value={n}>
-                  {n}
-                </option>
-              ))}
-            </select>
-          </label>
+          <Stepper label="Rader" value={rows} onChange={setRows} />
+          <Stepper label="Kolonner" value={cols} onChange={setCols} />
           <button
             onClick={handleGenerate}
             disabled={generating || students.length === 0}
             className="rounded-md bg-accent px-4 py-2 text-sm font-medium text-white hover:bg-accent-hover disabled:opacity-50"
           >
-            {generating ? "Genererer …" : "Generer nytt klassekart"}
+            {generating ? "Genererer …" : "Generer klassekart"}
           </button>
           {lastResult && (
             <p className="text-sm text-muted">
@@ -179,6 +205,12 @@ export default function ClassDetailPage() {
             </p>
           )}
         </div>
+        {students.length > capacity && (
+          <p className="mb-3 text-xs text-subtle">
+            {rows} × {cols} pulter gir kun plass til {capacity} elever — utvider automatisk med flere rader
+            ved generering.
+          </p>
+        )}
 
         <div className="mb-4 flex gap-1 border-b border-border text-sm">
           {(
@@ -200,12 +232,13 @@ export default function ClassDetailPage() {
           ))}
         </div>
 
-        {tab === "kart" &&
-          (currentChart ? (
-            <SeatingChartView layout={currentChart.layout} studentsById={studentsById} />
-          ) : (
-            <p className="text-sm text-muted">Ingen klassekart generert ennå.</p>
-          ))}
+        {tab === "kart" && (
+          <ClassroomView
+            layout={currentChart?.layout ?? []}
+            cols={currentChart?.cols ?? cols}
+            studentsById={studentsById}
+          />
+        )}
 
         {tab === "oversikt" && <PairHeatmap students={students} historyRows={historyRows} />}
 
@@ -223,8 +256,8 @@ export default function ClassDetailPage() {
                     }}
                     className="w-full rounded-md border border-border px-3 py-2 text-left hover:bg-surface-raised"
                   >
-                    {new Date(chart.created_at).toLocaleString("no-NO")} &mdash; {chart.group_size} per
-                    bord
+                    {new Date(chart.created_at).toLocaleString("no-NO")} &mdash; {chart.rows} × {chart.cols}{" "}
+                    pulter
                   </button>
                 </li>
               ))

@@ -21,7 +21,8 @@ export type SeatingLayout = string[][]; // array of groups, each a list of stude
 export interface SeatingChart {
   id: string;
   class_id: string;
-  group_size: number;
+  rows: number;
+  cols: number;
   layout: SeatingLayout;
   created_at: string;
 }
