@@ -84,6 +84,7 @@ export default function Sidebar({ open, onClose, onAbout }: Props) {
     charts,
     activeChartId,
     showChart,
+    deleteChart,
     pairHistory,
     setError,
   } = useAppData();
@@ -95,6 +96,20 @@ export default function Sidebar({ open, onClose, onAbout }: Props) {
   const [showHeatmap, setShowHeatmap] = useState(false);
   const [showForm, setShowForm] = useState(false);
   const [pendingDelete, setPendingDelete] = useState<{ id: string; name: string } | null>(null);
+  const [pendingChartDelete, setPendingChartDelete] = useState<{ id: string; label: string } | null>(
+    null
+  );
+
+  async function confirmChartDelete() {
+    if (!pendingChartDelete) return;
+    const { id } = pendingChartDelete;
+    setPendingChartDelete(null);
+    try {
+      await deleteChart(id);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    }
+  }
 
   async function confirmDelete() {
     if (!pendingDelete) return;
@@ -245,26 +260,55 @@ export default function Sidebar({ open, onClose, onAbout }: Props) {
                 {charts.length === 0 ? (
                   <li className="text-xs text-subtle">Ingen kart generert ennå.</li>
                 ) : (
-                  charts.map((chart) => (
-                    <li key={chart.id}>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          showChart(chart.id);
-                          onClose();
-                        }}
-                        aria-pressed={chart.id === activeChartId}
-                        title={new Date(chart.created_at).toLocaleString("nb-NO")}
-                        className={`w-full rounded border px-2 py-1.5 text-left text-xs ${
-                          chart.id === activeChartId
+                  charts.map((chart) => {
+                    const label = chartLabel(chart.created_at);
+                    const isShown = chart.id === activeChartId;
+                    return (
+                      <li
+                        key={chart.id}
+                        className={`group flex items-center gap-0.5 rounded border ${
+                          isShown
                             ? "border-accent bg-accent-soft text-accent-text"
                             : "border-border hover:bg-background"
                         }`}
                       >
-                        {chartLabel(chart.created_at)}
-                      </button>
-                    </li>
-                  ))
+                        <button
+                          type="button"
+                          onClick={() => {
+                            showChart(chart.id);
+                            onClose();
+                          }}
+                          aria-pressed={isShown}
+                          title={new Date(chart.created_at).toLocaleString("nb-NO")}
+                          className="min-w-0 flex-1 truncate px-2 py-1.5 text-left text-xs"
+                        >
+                          {label}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setPendingChartDelete({ id: chart.id, label })}
+                          aria-label={`Slett kartet fra ${label}`}
+                          title={`Slett kartet fra ${label}`}
+                          className="mr-0.5 rounded p-1 text-subtle opacity-0 hover:bg-danger-soft hover:text-danger focus-visible:opacity-100 group-hover:opacity-100"
+                        >
+                          <svg
+                            viewBox="0 0 16 16"
+                            className="h-3 w-3"
+                            fill="none"
+                            stroke="currentColor"
+                            strokeWidth="1.6"
+                            aria-hidden
+                          >
+                            <path
+                              d="M3 4.5h10M6.5 4.5V3h3v1.5M4.5 4.5l.5 8h6l.5-8"
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                            />
+                          </svg>
+                        </button>
+                      </li>
+                    );
+                  })
                 )}
               </ul>
             )}
@@ -299,6 +343,23 @@ export default function Sidebar({ open, onClose, onAbout }: Props) {
         >
           <PairHeatmap students={activeStudents} historyRows={pairHistory} />
         </Modal>
+      )}
+
+      {pendingChartDelete && (
+        <ConfirmDialog
+          title="Slette dette klassekartet?"
+          body={
+            <>
+              Kartet fra{" "}
+              <strong className="text-foreground">{pendingChartDelete.label}</strong> slettes, og
+              parene det bidro med telles ned igjen i oversikten over par. Elevene og de andre
+              kartene beholdes.
+            </>
+          }
+          confirmLabel="Slett kartet"
+          onConfirm={confirmChartDelete}
+          onCancel={() => setPendingChartDelete(null)}
+        />
       )}
 
       {pendingDelete && (

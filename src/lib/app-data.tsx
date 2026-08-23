@@ -14,6 +14,7 @@ import {
   addStudents as apiAddStudents,
   createClass as apiCreateClass,
   deleteClass as apiDeleteClass,
+  deleteChart as apiDeleteChart,
   deleteStudent as apiDeleteStudent,
   updateStudent as apiUpdateStudent,
   adjustPairHistory,
@@ -61,6 +62,7 @@ interface AppDataValue {
   charts: SeatingChart[];
   activeChartId: string | null;
   showChart: (chartId: string) => void;
+  deleteChart: (chartId: string) => Promise<void>;
   pairHistory: PairHistoryRow[];
   moveStudent: (
     from: { deskId: string; index: number },
@@ -241,6 +243,28 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
   const showChart = useCallback((chartId: string) => setActiveChartId(chartId), []);
 
   /**
+   * Sletter ett tidligere klassekart. Parene kartet bidro med telles ned igjen,
+   * ellers ville varmekartet fortsatt telle et kart som ikke finnes lenger.
+   */
+  const deleteChart = useCallback(
+    async (chartId: string) => {
+      if (!activeClassId) return;
+      const chart = charts.find((c) => c.id === chartId);
+      if (!chart) return;
+
+      await apiDeleteChart(chartId);
+      await adjustPairHistory(activeClassId, pairsFromAssignments(chart.layout), []);
+
+      const remaining = charts.filter((c) => c.id !== chartId);
+      setCharts(remaining);
+      // Slettet du kartet du så på, vis det nyeste som er igjen.
+      setActiveChartId((prev) => (prev === chartId ? remaining[0]?.id ?? null : prev));
+      setPairHistory(await fetchPairHistory(activeClassId));
+    },
+    [activeClassId, charts]
+  );
+
+  /**
    * Flytter en elev til et annet sete. Er setet opptatt, bytter de to elevene
    * plass. Par-historikken justeres slik at varmekartet stemmer med hvem som
    * faktisk sitter sammen etter flyttingen.
@@ -342,6 +366,7 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
       charts,
       activeChartId,
       showChart,
+      deleteChart,
       pairHistory,
       moveStudent,
       generate,
@@ -368,6 +393,7 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
       charts,
       activeChartId,
       showChart,
+      deleteChart,
       pairHistory,
       moveStudent,
       generate,

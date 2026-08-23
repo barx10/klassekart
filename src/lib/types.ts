@@ -12,6 +12,12 @@ export interface Desk {
   seats: number;
   /** Valgfritt bordnavn, f.eks. "Bord 1" eller "Grønn gruppe". */
   name?: string;
+  /**
+   * Egen bredde og høyde i piksler, satt ved å dra i hjørnet av pulten. Uten
+   * dem får pulten standardmålet for antall plasser.
+   */
+  w?: number;
+  h?: number;
 }
 
 /**

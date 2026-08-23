@@ -17,12 +17,18 @@ hvem som er kontaktlærer for de ulike elevene.
   så den unngår å gjenta de samme gruppene gang på gang.
 - **Oversikt over par** – en varmekart-matrise som viser hvor mange ganger
   hvert elevpar har sittet sammen.
-- **Tidligere kart** – bla gjennom tidligere genererte klassekart.
+- **Tidligere kart** – bla gjennom tidligere genererte klassekart, og slett
+  dem enkeltvis. Parene et slettet kart bidro med telles ned igjen, så
+  oversikten over par stemmer med kartene som faktisk finnes.
+- **Tilpass visningen** – hele klasserommet skaleres til skjermbredden, med
+  egne zoom-knapper. Hver pult kan dras til sin egen størrelse i hjørnet nede
+  til høyre.
 - **Skriv ut** – klassekartet skrives ut uten meny og verktøylinjer, og i lyse
   farger også for de som bruker mørk modus.
 
 Appen kan brukes med tastatur alene: Enter på et sete løfter eleven, Enter på
-et annet sete bytter dem, og piltastene flytter en valgt pult.
+et annet sete bytter dem, piltastene flytter en valgt pult, og piltastene på
+størrelseshåndtaket endrer bredde og høyde.
 
 ## Teknologi
 
