@@ -2,13 +2,14 @@
 
 import { useRef, useState } from "react";
 import {
-  DESK_HEIGHT,
   MAX_SEATS,
   MIN_SEATS,
   SEAT_GAP,
   canvasSize,
   clampSeats,
+  deskHeight,
   deskWidth,
+  seatGrid,
 } from "@/lib/classroom";
 import { genderDotClass } from "@/lib/gender";
 import type { Desk, DeskAssignments, Student } from "@/lib/types";
@@ -33,13 +34,13 @@ interface DragState {
 function Seat({ student }: { student: Student | undefined }) {
   if (!student) {
     return (
-      <div className="flex h-full flex-1 items-center justify-center rounded-lg border border-dashed border-border text-[11px] text-subtle">
+      <div className="flex h-full w-full items-center justify-center rounded-lg border border-dashed border-border text-[11px] text-subtle">
         Ledig
       </div>
     );
   }
   return (
-    <div className="flex h-full flex-1 items-center gap-1.5 overflow-hidden rounded-lg border border-border bg-surface px-2">
+    <div className="flex h-full w-full items-center gap-1.5 overflow-hidden rounded-lg border border-border bg-surface px-2">
       <span className={`h-2 w-2 shrink-0 rounded-full ${genderDotClass(student.gender)}`} aria-hidden />
       <span className="truncate text-[13px] font-medium">{student.name}</span>
     </div>
@@ -137,9 +138,21 @@ export default function ClassroomCanvas({
                         ? "z-20 cursor-grab border-accent"
                         : "z-10 cursor-grab border-border hover:border-accent/50"
                   }`}
-                  style={{ left: desk.x, top: desk.y, width: deskWidth(seats), height: DESK_HEIGHT }}
+                  style={{
+                    left: desk.x,
+                    top: desk.y,
+                    width: deskWidth(seats),
+                    height: deskHeight(seats),
+                  }}
                 >
-                  <div className="flex h-full" style={{ gap: SEAT_GAP }}>
+                  <div
+                    className="grid h-full"
+                    style={{
+                      gridTemplateColumns: `repeat(${seatGrid(seats).cols}, minmax(0, 1fr))`,
+                      gridAutoRows: "minmax(0, 1fr)",
+                      gap: SEAT_GAP,
+                    }}
+                  >
                     {Array.from({ length: seats }, (_, i) => (
                       <Seat key={i} student={seated[i] ? studentsById.get(seated[i]) : undefined} />
                     ))}

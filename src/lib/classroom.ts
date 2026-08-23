@@ -2,9 +2,9 @@ import type { Desk } from "./types";
 
 /** Piksel-mål for pulter og rutenettet "Rydd opp" stiller dem opp i. */
 export const SEAT_WIDTH = 84;
+export const SEAT_HEIGHT = 50;
 export const SEAT_GAP = 6;
 export const DESK_PADDING = 6;
-export const DESK_HEIGHT = 62;
 export const GAP_X = 28;
 export const GAP_Y = 40;
 export const PADDING = 16;
@@ -42,10 +42,28 @@ export function normalizeDesks(raw: unknown): Desk[] {
     }));
 }
 
-export function deskWidth(seats: number): number {
+/**
+ * Hvordan plassene står ved en pult. En firergruppe er to og to vendt mot
+ * hverandre (et kvadrat), slik bordgrupper faktisk står i et klasserom —
+ * ikke fire seter på rekke. 1-3 plasser står på rekke.
+ */
+export function seatGrid(seats: number): { cols: number; rows: number } {
   const n = clampSeats(seats);
-  return n * SEAT_WIDTH + (n - 1) * SEAT_GAP + DESK_PADDING * 2;
+  return n === 4 ? { cols: 2, rows: 2 } : { cols: n, rows: 1 };
 }
+
+export function deskWidth(seats: number): number {
+  const { cols } = seatGrid(seats);
+  return cols * SEAT_WIDTH + (cols - 1) * SEAT_GAP + DESK_PADDING * 2;
+}
+
+export function deskHeight(seats: number): number {
+  const { rows } = seatGrid(seats);
+  return rows * SEAT_HEIGHT + (rows - 1) * SEAT_GAP + DESK_PADDING * 2;
+}
+
+/** Høyden på en vanlig pult med én rad plasser. */
+export const DESK_HEIGHT = SEAT_HEIGHT + DESK_PADDING * 2;
 
 export function createDesk(seats = DEFAULT_SEATS): Desk {
   return { id: newDeskId(), x: 0, y: 0, seats: clampSeats(seats) };
@@ -64,7 +82,8 @@ function readingOrder(desks: Desk[]): Desk[] {
 
 /**
  * Stiller pultene opp i jevne rader med `cols` pulter per rad. Pultene kan ha
- * ulik bredde, så hver rad pakkes fra venstre med faktisk pultbredde.
+ * ulik bredde og høyde, så hver rad pakkes fra venstre med faktisk pultbredde,
+ * og radhøyden følger den høyeste pulten i raden.
  */
 export function tidyDesks(desks: Desk[], cols: number): Desk[] {
   const safeCols = Math.max(1, cols);
@@ -73,12 +92,13 @@ export function tidyDesks(desks: Desk[], cols: number): Desk[] {
   let y = PADDING;
 
   for (let i = 0; i < ordered.length; i += safeCols) {
+    const row = ordered.slice(i, i + safeCols);
     let x = PADDING;
-    for (const desk of ordered.slice(i, i + safeCols)) {
+    for (const desk of row) {
       result.push({ ...desk, x, y });
       x += deskWidth(desk.seats) + GAP_X;
     }
-    y += DESK_HEIGHT + GAP_Y;
+    y += Math.max(...row.map((d) => deskHeight(d.seats))) + GAP_Y;
   }
   return result;
 }
@@ -182,8 +202,8 @@ export function canvasSize(desks: Desk[]): { width: number; height: number } {
     };
   }
   const maxX = Math.max(...desks.map((d) => d.x + deskWidth(d.seats)));
-  const maxY = Math.max(...desks.map((d) => d.y));
-  return { width: maxX + PADDING, height: maxY + DESK_HEIGHT + PADDING + TOOLBAR_ROOM };
+  const maxY = Math.max(...desks.map((d) => d.y + deskHeight(d.seats)));
+  return { width: maxX + PADDING, height: maxY + PADDING + TOOLBAR_ROOM };
 }
 
 /** Lager et ferdig oppstilt rutenett med topulter. */
