@@ -119,6 +119,11 @@ export async function fetchChartHistory(classId: string): Promise<SeatingChart[]
   );
 }
 
+export async function deleteChart(chartId: string): Promise<void> {
+  const { error } = await supabase.from("seating_charts").delete().eq("id", chartId);
+  if (error) throw new Error(error.message);
+}
+
 export interface GenerateResult {
   chart: SeatingChart;
   /** Pultene kartet faktisk ble laget for — kan ha fått påfyll, se under. */

@@ -10,6 +10,11 @@ import type { Desk } from "./types";
  */
 export const SEAT_WIDTH = 132;
 export const SEAT_HEIGHT = 54;
+/** Grensene for hvor lite og stort et sete kan dras. */
+export const MIN_SEAT_WIDTH = 64;
+export const MAX_SEAT_WIDTH = 240;
+export const MIN_SEAT_HEIGHT = 34;
+export const MAX_SEAT_HEIGHT = 110;
 export const SEAT_GAP = 6;
 export const DESK_PADDING = 6;
 /** Topplinja på pulten: viser bordnavnet og er draghåndtaket for pulten. */
@@ -51,7 +56,11 @@ export function normalizeDesks(raw: unknown): Desk[] {
         seats: clampSeats(Number(d.seats) || DEFAULT_SEATS),
       };
       if (typeof d.name === "string" && d.name.trim()) desk.name = d.name.trim();
-      return desk;
+      const w = Number(d.w);
+      const h = Number(d.h);
+      if (Number.isFinite(w) && w > 0) desk.w = w;
+      if (Number.isFinite(h) && h > 0) desk.h = h;
+      return clampDeskSize(desk);
     });
 }
 
@@ -65,14 +74,63 @@ export function seatGrid(seats: number): { cols: number; rows: number } {
   return n === 4 ? { cols: 2, rows: 2 } : { cols: n, rows: 1 };
 }
 
-export function deskWidth(seats: number): number {
+/** Bredden en pult får når den ikke er dratt til en egen størrelse. */
+export function defaultDeskWidth(seats: number): number {
   const { cols } = seatGrid(seats);
   return cols * SEAT_WIDTH + (cols - 1) * SEAT_GAP + DESK_PADDING * 2;
 }
 
-export function deskHeight(seats: number): number {
+export function defaultDeskHeight(seats: number): number {
   const { rows } = seatGrid(seats);
   return rows * SEAT_HEIGHT + (rows - 1) * SEAT_GAP + DESK_PADDING * 2 + DESK_HEADER_HEIGHT;
+}
+
+/** Rammen rundt setene: alt som ikke er selve setene. */
+function chromeWidth(seats: number): number {
+  const { cols } = seatGrid(seats);
+  return (cols - 1) * SEAT_GAP + DESK_PADDING * 2;
+}
+
+function chromeHeight(seats: number): number {
+  const { rows } = seatGrid(seats);
+  return (rows - 1) * SEAT_GAP + DESK_PADDING * 2 + DESK_HEADER_HEIGHT;
+}
+
+/** Hvor liten og hvor stor en pult kan dras, gitt antall plasser. */
+export function deskSizeBounds(seats: number): {
+  minW: number;
+  maxW: number;
+  minH: number;
+  maxH: number;
+} {
+  const { cols, rows } = seatGrid(seats);
+  return {
+    minW: cols * MIN_SEAT_WIDTH + chromeWidth(seats),
+    maxW: cols * MAX_SEAT_WIDTH + chromeWidth(seats),
+    minH: rows * MIN_SEAT_HEIGHT + chromeHeight(seats),
+    maxH: rows * MAX_SEAT_HEIGHT + chromeHeight(seats),
+  };
+}
+
+/**
+ * Holder en egendefinert størrelse innenfor grensene. Endrer læreren antall
+ * plasser etterpå, kan en lagret bredde ha blitt for trang — derfor klemmes
+ * den på nytt hver gang pulten leses eller endres.
+ */
+export function clampDeskSize(desk: Desk): Desk {
+  const { minW, maxW, minH, maxH } = deskSizeBounds(desk.seats);
+  const next = { ...desk };
+  if (next.w !== undefined) next.w = Math.round(Math.min(maxW, Math.max(minW, next.w)));
+  if (next.h !== undefined) next.h = Math.round(Math.min(maxH, Math.max(minH, next.h)));
+  return next;
+}
+
+export function deskWidth(desk: Desk): number {
+  return desk.w ?? defaultDeskWidth(desk.seats);
+}
+
+export function deskHeight(desk: Desk): number {
+  return desk.h ?? defaultDeskHeight(desk.seats);
 }
 
 /** Høyden på en vanlig pult med én rad plasser. */
@@ -80,6 +138,22 @@ export const DESK_HEIGHT = SEAT_HEIGHT + DESK_PADDING * 2 + DESK_HEADER_HEIGHT;
 
 export function createDesk(seats = DEFAULT_SEATS): Desk {
   return { id: newDeskId(), x: 0, y: 0, seats: clampSeats(seats) };
+}
+
+/** Setter en egen størrelse på én pult (fra draghjørnet). */
+export function setDeskSize(desks: Desk[], deskId: string, w: number, h: number): Desk[] {
+  return desks.map((d) => (d.id === deskId ? clampDeskSize({ ...d, w, h }) : d));
+}
+
+/** Gir pulten standardstørrelsen tilbake. */
+export function resetDeskSize(desks: Desk[], deskId: string): Desk[] {
+  return desks.map((d) => {
+    if (d.id !== deskId) return d;
+    const next = { ...d };
+    delete next.w;
+    delete next.h;
+    return next;
+  });
 }
 
 /**
@@ -109,9 +183,9 @@ export function tidyDesks(desks: Desk[], cols: number): Desk[] {
     let x = PADDING;
     for (const desk of row) {
       result.push({ ...desk, x, y });
-      x += deskWidth(desk.seats) + GAP_X;
+      x += deskWidth(desk) + GAP_X;
     }
-    y += Math.max(...row.map((d) => deskHeight(d.seats))) + GAP_Y;
+    y += Math.max(...row.map(deskHeight)) + GAP_Y;
   }
   return result;
 }
@@ -175,12 +249,14 @@ export function addDesk(desks: Desk[], seats = DEFAULT_SEATS): Desk[] {
     return [{ ...desk, x: PADDING, y: PADDING }];
   }
   const last = readingOrder(desks)[desks.length - 1];
-  return [...desks, { ...desk, x: last.x + deskWidth(last.seats) + GAP_X, y: last.y }];
+  return [...desks, { ...desk, x: last.x + deskWidth(last) + GAP_X, y: last.y }];
 }
 
 /** Endrer antall plasser ved én pult. */
 export function setDeskSeats(desks: Desk[], deskId: string, seats: number): Desk[] {
-  return desks.map((d) => (d.id === deskId ? { ...d, seats: clampSeats(seats) } : d));
+  return desks.map((d) =>
+    d.id === deskId ? clampDeskSize({ ...d, seats: clampSeats(seats) }) : d
+  );
 }
 
 /** Gir pulten et navn (tom streng fjerner navnet). */
@@ -204,14 +280,14 @@ export function setDeskName(desks: Desk[], deskId: string, name: string): Desk[]
 export function desksOverlap(desks: Desk[]): boolean {
   for (let i = 0; i < desks.length; i++) {
     const a = desks[i];
-    const aw = deskWidth(a.seats);
-    const ah = deskHeight(a.seats);
+    const aw = deskWidth(a);
+    const ah = deskHeight(a);
     for (let j = i + 1; j < desks.length; j++) {
       const b = desks[j];
       if (
-        a.x < b.x + deskWidth(b.seats) &&
+        a.x < b.x + deskWidth(b) &&
         b.x < a.x + aw &&
-        a.y < b.y + deskHeight(b.seats) &&
+        a.y < b.y + deskHeight(b) &&
         b.y < a.y + ah
       ) {
         return true;
@@ -248,12 +324,12 @@ export const TOOLBAR_ROOM = 44;
 export function canvasSize(desks: Desk[]): { width: number; height: number } {
   if (desks.length === 0) {
     return {
-      width: PADDING * 2 + deskWidth(DEFAULT_SEATS),
+      width: PADDING * 2 + defaultDeskWidth(DEFAULT_SEATS),
       height: PADDING * 2 + DESK_HEIGHT + TOOLBAR_ROOM,
     };
   }
-  const maxX = Math.max(...desks.map((d) => d.x + deskWidth(d.seats)));
-  const maxY = Math.max(...desks.map((d) => d.y + deskHeight(d.seats)));
+  const maxX = Math.max(...desks.map((d) => d.x + deskWidth(d)));
+  const maxY = Math.max(...desks.map((d) => d.y + deskHeight(d)));
   return { width: maxX + PADDING, height: maxY + PADDING + TOOLBAR_ROOM };
 }
 

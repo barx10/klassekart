@@ -9,8 +9,10 @@ import {
   desksOverlap,
   removeColumn,
   removeRow,
+  resetDeskSize,
   rowCount,
   setDeskName,
+  setDeskSize,
   setDeskSeats,
   tidyDesks,
   totalSeats,
@@ -280,6 +282,10 @@ export default function ClassDetailPage() {
         onRemoveDesk={(deskId) => applyDesks(desks.filter((d) => d.id !== deskId))}
         onSeatsChange={(deskId, next) => applyDesks(setDeskSeats(desks, deskId, next))}
         onRenameDesk={(deskId, name) => applyDesks(setDeskName(desks, deskId, name))}
+        onResizeDesk={(deskId, w, h, persist) =>
+          applyDesks(setDeskSize(desks, deskId, w, h), undefined, persist)
+        }
+        onResetDeskSize={(deskId) => applyDesks(resetDeskSize(desks, deskId))}
         onMoveStudent={moveStudent}
       />
     </div>
