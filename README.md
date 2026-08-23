@@ -18,6 +18,11 @@ hvem som er kontaktlærer for de ulike elevene.
 - **Oversikt over par** – en varmekart-matrise som viser hvor mange ganger
   hvert elevpar har sittet sammen.
 - **Tidligere kart** – bla gjennom tidligere genererte klassekart.
+- **Skriv ut** – klassekartet skrives ut uten meny og verktøylinjer, og i lyse
+  farger også for de som bruker mørk modus.
+
+Appen kan brukes med tastatur alene: Enter på et sete løfter eleven, Enter på
+et annet sete bytter dem, og piltastene flytter en valgt pult.
 
 ## Teknologi
 
@@ -78,13 +83,28 @@ flere lærere eller gjøres offentlig tilgjengelig.
 ```
 src/
   app/
-    page.tsx                  Klasseoversikt (dashboard)
-    klasser/[classId]/page.tsx Klassedetalj: elever, generering, oversikt
-  components/                 UI-komponenter (elevliste, klassekart, varmekart, ...)
+    layout.tsx                 Rot-layout: fonter, metadata, AppShell
+    page.tsx                   Startside: oppretter første klasse
+    klasser/[classId]/page.tsx Klassedetalj: klasserom, generering, utskrift
+    globals.css                Fargevariabler, fokusstiler, utskriftsstiler
+  components/
+    AppShell.tsx               Meny + innhold + bunntekst (meny som skuff på mobil)
+    Sidebar.tsx                Klasseliste og verktøy for aktiv klasse
+    ClassroomCanvas.tsx        Pultene og elevene, med dra-og-slipp og tastatur
+    StudentManager.tsx         Legg til / rediger elever
+    PairHeatmap.tsx            Varmekart over elevpar
+    Modal.tsx                  Dialog med fokusfelle
+    ConfirmDialog.tsx          Bekreftelse før noe slettes
+    AboutModal.tsx             «Om Klassekart»
+    NewClassForm.tsx           Skjema for ny klasse (meny + startside)
+    Footer.tsx                 Bunntekst
   lib/
     seating.ts                 Algoritme for å generere klassekart
+    classroom.ts               Pultgeometri og oppstilling
     api.ts                     Datalag mot Supabase
     supabase.ts                Supabase-klient
+    ui.ts                      Delte knappe- og feltstiler
+    gender.ts                  Kjønnsetiketter og -farger
     types.ts                   Delte TypeScript-typer
 supabase/
   schema.sql                   Database-skjema

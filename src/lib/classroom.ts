@@ -1,8 +1,15 @@
 import type { Desk } from "./types";
 
-/** Piksel-mål for pulter og rutenettet "Rydd opp" stiller dem opp i. */
-export const SEAT_WIDTH = 84;
-export const SEAT_HEIGHT = 50;
+/**
+ * Piksel-mål for pulter og rutenettet "Rydd opp" stiller dem opp i.
+ *
+ * Setet var 84 px bredt med plass til én linje, og da ble nesten alle
+ * elevnavn kuttet til «Amina …» — et klassekart du ikke kan lese navnene på
+ * er ubrukelig. Setet er nå bredt nok, og høyt nok, til fornavn og etternavn
+ * på hver sin linje.
+ */
+export const SEAT_WIDTH = 132;
+export const SEAT_HEIGHT = 54;
 export const SEAT_GAP = 6;
 export const DESK_PADDING = 6;
 /** Topplinja på pulten: viser bordnavnet og er draghåndtaket for pulten. */
@@ -186,6 +193,32 @@ export function setDeskName(desks: Desk[], deskId: string, name: string): Desk[]
     else delete next.name;
     return next;
   });
+}
+
+/**
+ * Om noen pulter ligger oppå hverandre. Pulter lagret før setene ble brede nok
+ * til hele navn ble plassert etter de gamle målene, så et gammelt oppsett kan
+ * overlappe nå. Vi flytter dem ikke av oss selv — læreren har gjerne stilt dem
+ * opp slik rommet faktisk ser ut — men vi kan si fra og tilby «Rydd opp».
+ */
+export function desksOverlap(desks: Desk[]): boolean {
+  for (let i = 0; i < desks.length; i++) {
+    const a = desks[i];
+    const aw = deskWidth(a.seats);
+    const ah = deskHeight(a.seats);
+    for (let j = i + 1; j < desks.length; j++) {
+      const b = desks[j];
+      if (
+        a.x < b.x + deskWidth(b.seats) &&
+        b.x < a.x + aw &&
+        a.y < b.y + deskHeight(b.seats) &&
+        b.y < a.y + ah
+      ) {
+        return true;
+      }
+    }
+  }
+  return false;
 }
 
 /** Samlet antall elevplasser i klasserommet. */

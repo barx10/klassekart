@@ -1,23 +1,41 @@
 @import "tailwindcss";
 
+/* ---------------------------------------------------------------------------
+   Fargevariabler. Tekstfargene er valgt slik at de klarer WCAG AA (4.5:1) mot
+   flatene de faktisk brukes på — også --subtle, som bærer mye av småteksten.
+
+   --accent finnes i to varianter med vilje: --accent er fyllfargen (knapper),
+   og --accent-text er lenke-/tekstfargen. I mørk modus må de være ulike, for
+   en fyllfarge lys nok til hvit tekst blir for lys som tekst på mørk bakgrunn.
+   --------------------------------------------------------------------------- */
 :root {
+  color-scheme: light;
+
   --background: #f9f9f7;
   --surface: #fcfcfb;
   --surface-raised: #ffffff;
   --foreground: #0b0b0b;
   --muted: #52514e;
-  --subtle: #898781;
-  --border: rgba(11, 11, 11, 0.1);
-  --accent: #2a78d6;
-  --accent-hover: #1c5cab;
-  --accent-soft: #e7f0fc;
-  --danger: #d03b3b;
-  --danger-soft: #fbe9e9;
-  --good: #0ca30c;
+  --subtle: #6f6d67;
+  --border: rgba(11, 11, 11, 0.12);
+  --border-strong: rgba(11, 11, 11, 0.22);
 
-  --gender-jente: #e87ba4;
+  --accent: #1f66c0;
+  --accent-hover: #17529c;
+  --accent-on: #ffffff;
+  --accent-text: #1f66c0;
+  --accent-soft: #e7f0fc;
+
+  --danger: #b82c2c;
+  --danger-hover: #992222;
+  --danger-soft: #fbe9e9;
+
+  --good: #1a7f37;
+  --good-soft: #e6f4ea;
+
+  --gender-jente: #d1417a;
   --gender-jente-soft: #fbe9f1;
-  --gender-gutt: #2a78d6;
+  --gender-gutt: #1f66c0;
   --gender-gutt-soft: #e7f0fc;
   --gender-annet: #6d6a63;
   --gender-annet-soft: #efeee9;
@@ -25,8 +43,8 @@
   --seq-0: #eef4fd;
   --seq-1: #cde2fb;
   --seq-2: #86b6ef;
-  --seq-3: #5598e7;
-  --seq-4: #2a78d6;
+  --seq-3: #4f8fd9;
+  --seq-4: #1f66c0;
   --seq-5: #0d366b;
   --seq-text-0: #0b0b0b;
   --seq-text-1: #0b0b0b;
@@ -44,35 +62,50 @@
   --color-muted: var(--muted);
   --color-subtle: var(--subtle);
   --color-border: var(--border);
+  --color-border-strong: var(--border-strong);
   --color-accent: var(--accent);
   --color-accent-hover: var(--accent-hover);
+  --color-accent-on: var(--accent-on);
+  --color-accent-text: var(--accent-text);
   --color-accent-soft: var(--accent-soft);
   --color-danger: var(--danger);
+  --color-danger-hover: var(--danger-hover);
   --color-danger-soft: var(--danger-soft);
   --color-good: var(--good);
+  --color-good-soft: var(--good-soft);
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
 }
 
 @media (prefers-color-scheme: dark) {
   :root {
+    color-scheme: dark;
+
     --background: #0d0d0d;
     --surface: #1a1a19;
     --surface-raised: #212120;
     --foreground: #ffffff;
     --muted: #c3c2b7;
-    --subtle: #898781;
-    --border: rgba(255, 255, 255, 0.1);
-    --accent: #3987e5;
-    --accent-hover: #5598e7;
-    --accent-soft: #16283f;
-    --danger: #e66767;
-    --danger-soft: #3a1f1f;
-    --good: #0ca30c;
+    --subtle: #9d9b93;
+    --border: rgba(255, 255, 255, 0.14);
+    --border-strong: rgba(255, 255, 255, 0.26);
 
-    --gender-jente: #d55181;
+    --accent: #2a6fd0;
+    --accent-hover: #3f81df;
+    --accent-on: #ffffff;
+    --accent-text: #7db3f2;
+    --accent-soft: #16283f;
+
+    --danger: #e66767;
+    --danger-hover: #ef8080;
+    --danger-soft: #3a1f1f;
+
+    --good: #3fb950;
+    --good-soft: #10281a;
+
+    --gender-jente: #e884ab;
     --gender-jente-soft: #3a2230;
-    --gender-gutt: #3987e5;
+    --gender-gutt: #6ba6ef;
     --gender-gutt-soft: #16283f;
     --gender-annet: #a8a69d;
     --gender-annet-soft: #2a2a28;
@@ -98,4 +131,78 @@ body {
   background: var(--background);
   color: var(--foreground);
   font-family: var(--font-sans), system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+
+/* Appen hadde ingen synlig fokusmarkering i det hele tatt — uten denne er den
+   ubrukelig med tastatur. :focus-visible gir ringen kun til tastaturbruk. */
+:focus-visible {
+  outline: 2px solid var(--accent-text);
+  outline-offset: 2px;
+}
+
+/* Den som drar en pult eller en elev skal ikke få tekstmarkering på kjøpet. */
+[data-dragging="true"] {
+  cursor: grabbing;
+  user-select: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
+  }
+}
+
+/* ---------------------------------------------------------------------------
+   Utskrift. Et klassekart havner ofte på papir eller lerret, så vi tvinger
+   lyse farger (ellers skriver mørk modus ut en svart side), fjerner meny og
+   verktøylinjer, og lar klasserommet få hele bredden.
+   --------------------------------------------------------------------------- */
+@media print {
+  :root {
+    color-scheme: light;
+    --background: #ffffff;
+    --surface: #ffffff;
+    --surface-raised: #ffffff;
+    --foreground: #000000;
+    --muted: #333333;
+    --subtle: #555555;
+    --border: rgba(0, 0, 0, 0.35);
+    --border-strong: rgba(0, 0, 0, 0.5);
+    --accent: #1f66c0;
+    --accent-text: #14498a;
+    --accent-soft: #ffffff;
+  }
+
+  body {
+    background: #ffffff;
+    display: block;
+  }
+
+  [data-print-hide] {
+    display: none !important;
+  }
+
+  /* Fokusringen fra skjermen skal ikke havne på papiret. */
+  :focus-visible {
+    outline: none !important;
+  }
+
+  main {
+    overflow: visible !important;
+    padding: 0 !important;
+  }
+
+  [data-print-area] {
+    border: 0 !important;
+    box-shadow: none !important;
+    overflow: visible !important;
+    padding: 0 !important;
+  }
+
+  @page {
+    margin: 12mm;
+  }
 }
