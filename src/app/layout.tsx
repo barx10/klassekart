@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import { AppDataProvider } from "@/lib/app-data";
-import Sidebar from "@/components/Sidebar";
+import AppShell from "@/components/AppShell";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -15,20 +15,24 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Klassekart",
-  description: "Enkelt verktøy for å generere klassekart og holde oversikt over elever.",
+  title: {
+    default: "Klassekart – Lærerliv",
+    template: "%s – Klassekart",
+  },
+  description:
+    "Sett opp klasserommet, fordel elevene i bordgrupper og hold oversikt over hvem som har sittet sammen før.",
+  applicationName: "Klassekart",
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
     <html
-      lang="no"
+      lang="nb"
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
     >
-      <body className="flex min-h-full">
+      <body className="min-h-full">
         <AppDataProvider>
-          <Sidebar />
-          <main className="min-w-0 flex-1 overflow-y-auto px-4 py-6 sm:px-8">{children}</main>
+          <AppShell>{children}</AppShell>
         </AppDataProvider>
       </body>
     </html>

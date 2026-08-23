@@ -1,7 +1,7 @@
 "use client";
 
 import { supabase } from "./supabase";
-import { makeGrid } from "./classroom";
+import { ensureCapacity, makeGrid } from "./classroom";
 import { buildHistoryMap, countNewPairs, generateSeatingChart, pairsFromGroups } from "./seating";
 import type {
   Desk,
@@ -27,10 +27,6 @@ export async function fetchClasses(): Promise<SchoolClass[]> {
   return unwrap(
     supabase.from("classes").select("*").order("created_at", { ascending: true })
   );
-}
-
-export async function fetchClass(id: string): Promise<SchoolClass> {
-  return unwrap(supabase.from("classes").select("*").eq("id", id).single());
 }
 
 export async function createClass(name: string, defaultContactTeacher?: string): Promise<SchoolClass> {
@@ -113,18 +109,6 @@ export async function fetchPairHistory(classId: string): Promise<PairHistoryRow[
   return unwrap(supabase.from("pair_history").select("*").eq("class_id", classId));
 }
 
-export async function fetchLatestChart(classId: string): Promise<SeatingChart | null> {
-  const { data, error } = await supabase
-    .from("seating_charts")
-    .select("*")
-    .eq("class_id", classId)
-    .order("created_at", { ascending: false })
-    .limit(1)
-    .maybeSingle();
-  if (error) throw new Error(error.message);
-  return data;
-}
-
 export async function fetchChartHistory(classId: string): Promise<SeatingChart[]> {
   return unwrap(
     supabase
@@ -137,6 +121,8 @@ export async function fetchChartHistory(classId: string): Promise<SeatingChart[]
 
 export interface GenerateResult {
   chart: SeatingChart;
+  /** Pultene kartet faktisk ble laget for — kan ha fått påfyll, se under. */
+  desks: Desk[];
   newPairs: number;
   totalPairs: number;
 }
@@ -194,7 +180,11 @@ export async function adjustPairHistory(
  * elevpar), lagrer det nye kartet og oppdaterer historikken. Elevene
  * fordeles på pultene læreren har satt opp i klasserommet.
  */
-export async function generateAndSaveChart(classId: string, desks: Desk[]): Promise<GenerateResult> {
+export async function generateAndSaveChart(
+  classId: string,
+  desks: Desk[],
+  deskCols: number
+): Promise<GenerateResult> {
   const [students, historyRows] = await Promise.all([
     fetchStudents(classId),
     fetchPairHistory(classId),
@@ -207,13 +197,19 @@ export async function generateAndSaveChart(classId: string, desks: Desk[]): Prom
     throw new Error("Klasserommet har ingen pulter ennå.");
   }
 
+  // Er det færre plasser enn elever, fyller vi på med pulter *før* vi
+  // genererer. Algoritmen ville uansett laget en gruppe for hver elev, men
+  // gruppene uten en tilhørende pult falt ut av kartet nedenfor — elevene
+  // forsvant fra klassekartet samtidig som parene deres ble ført i historikken.
+  const roomyDesks = ensureCapacity(desks, students.length, deskCols);
+
   const historyMap = buildHistoryMap(historyRows);
-  const groups = generateSeatingChart(students, desks.map((d) => d.seats), historyMap);
+  const groups = generateSeatingChart(students, roomyDesks.map((d) => d.seats), historyMap);
   const { newPairs, totalPairs } = countNewPairs(groups, historyMap);
 
   const layout: DeskAssignments = {};
   groups.forEach((group, i) => {
-    const desk = desks[i];
+    const desk = roomyDesks[i];
     if (desk && group.length > 0) layout[desk.id] = group;
   });
 
@@ -246,5 +242,7 @@ export async function generateAndSaveChart(classId: string, desks: Desk[]): Prom
     if (error) throw new Error(error.message);
   }
 
-  return { chart, newPairs, totalPairs };
+  if (roomyDesks !== desks) await updateDesks(classId, roomyDesks, deskCols);
+
+  return { chart, desks: roomyDesks, newPairs, totalPairs };
 }

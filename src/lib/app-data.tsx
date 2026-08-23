@@ -23,7 +23,6 @@ import {
   fetchPairHistory,
   generateAndSaveChart,
   updateChartLayout,
-  updateDefaultContactTeacher,
   updateDesks,
 } from "./api";
 import { clampSeats, normalizeDesks } from "./classroom";
@@ -51,7 +50,6 @@ interface AppDataValue {
   addStudents: (classId: string, names: string[], gender: Gender, contactTeacher: string | null) => Promise<void>;
   updateStudent: (id: string, fields: Partial<Pick<Student, "name" | "gender" | "contact_teacher">>) => Promise<void>;
   removeStudent: (id: string) => Promise<void>;
-  setContactTeacher: (classId: string, name: string | null) => Promise<void>;
 
   /** Klassen som vises i klasserommet nå (utledet fra adressen). */
   activeClass: SchoolClass | null;
@@ -240,11 +238,6 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
     setStudents((prev) => prev.filter((s) => s.id !== id));
   }, []);
 
-  const setContactTeacher = useCallback(async (classId: string, name: string | null) => {
-    const updated = await updateDefaultContactTeacher(classId, name);
-    setClasses((prev) => prev.map((c) => (c.id === classId ? updated : c)));
-  }, []);
-
   const showChart = useCallback((chartId: string) => setActiveChartId(chartId), []);
 
   /**
@@ -301,7 +294,22 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
     setError(null);
     setGenerateResult(null);
     try {
-      const { chart, newPairs, totalPairs } = await generateAndSaveChart(activeClassId, desks);
+      const {
+        chart,
+        desks: usedDesks,
+        newPairs,
+        totalPairs,
+      } = await generateAndSaveChart(activeClassId, desks, deskCols);
+
+      // Manglet det plasser, la generereringen til pulter og lagret dem.
+      // Speil det lokalt, ellers ville klasserommet vist et gammelt oppsett
+      // uten pultene elevene nettopp ble plassert ved.
+      if (usedDesks !== desks) {
+        setClasses((prev) =>
+          prev.map((c) => (c.id === activeClassId ? { ...c, desks: usedDesks } : c))
+        );
+      }
+
       setCharts((prev) => [chart, ...prev]);
       setActiveChartId(chart.id);
       setGenerateResult({ classId: activeClassId, newPairs, totalPairs });
@@ -311,7 +319,7 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
     } finally {
       setGenerating(false);
     }
-  }, [activeClassId, desks]);
+  }, [activeClassId, desks, deskCols]);
 
   const value = useMemo(
     () => ({
@@ -325,7 +333,6 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
       addStudents,
       updateStudent,
       removeStudent,
-      setContactTeacher,
       activeClass,
       activeStudents,
       desks,
@@ -352,7 +359,6 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
       addStudents,
       updateStudent,
       removeStudent,
-      setContactTeacher,
       activeClass,
       activeStudents,
       desks,
