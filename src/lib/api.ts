@@ -141,6 +141,53 @@ export interface GenerateResult {
   totalPairs: number;
 }
 
+/** Lagrer en endret elevplassering (f.eks. etter at læreren har dratt en elev). */
+export async function updateChartLayout(chartId: string, layout: DeskAssignments): Promise<void> {
+  const { error } = await supabase.from("seating_charts").update({ layout }).eq("id", chartId);
+  if (error) throw new Error(error.message);
+}
+
+/**
+ * Justerer par-historikken når læreren flytter elever manuelt. Uten dette
+ * ville varmekartet fortsatt telle parene slik de var da kartet ble generert.
+ * Par som forsvant telles ned, nye par telles opp.
+ */
+export async function adjustPairHistory(
+  classId: string,
+  before: [string, string][],
+  after: [string, string][]
+): Promise<void> {
+  const key = (p: [string, string]) => `${p[0]}_${p[1]}`;
+  const beforeKeys = new Set(before.map(key));
+  const afterKeys = new Set(after.map(key));
+
+  const removed = before.filter((p) => !afterKeys.has(key(p)));
+  const added = after.filter((p) => !beforeKeys.has(key(p)));
+  if (removed.length === 0 && added.length === 0) return;
+
+  const historyRows = await fetchPairHistory(classId);
+  const existing = new Map(historyRows.map((r) => [`${r.student_a_id}_${r.student_b_id}`, r]));
+  const now = new Date().toISOString();
+
+  const rows = [...removed.map((p) => [p, -1] as const), ...added.map((p) => [p, 1] as const)].map(
+    ([[a, b], delta]) => {
+      const prev = existing.get(`${a}_${b}`);
+      return {
+        class_id: classId,
+        student_a_id: a,
+        student_b_id: b,
+        times_together: Math.max(0, (prev?.times_together ?? 0) + delta),
+        last_seated_at: delta > 0 ? now : (prev?.last_seated_at ?? null),
+      };
+    }
+  );
+
+  const { error } = await supabase
+    .from("pair_history")
+    .upsert(rows, { onConflict: "class_id,student_a_id,student_b_id" });
+  if (error) throw new Error(error.message);
+}
+
 /**
  * Genererer et nytt klassekart for klassen: henter elever og gjeldende
  * par-historikk, kjører seteplasseringsalgoritmen (som minimerer gjentatte

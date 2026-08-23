@@ -16,15 +16,18 @@ import {
   deleteClass as apiDeleteClass,
   deleteStudent as apiDeleteStudent,
   updateStudent as apiUpdateStudent,
+  adjustPairHistory,
   fetchAllStudents,
   fetchChartHistory,
   fetchClasses,
   fetchPairHistory,
   generateAndSaveChart,
+  updateChartLayout,
   updateDefaultContactTeacher,
   updateDesks,
 } from "./api";
-import { normalizeDesks } from "./classroom";
+import { clampSeats, normalizeDesks } from "./classroom";
+import { pairsFromAssignments } from "./seating";
 import type {
   Desk,
   DeskAssignments,
@@ -61,6 +64,10 @@ interface AppDataValue {
   activeChartId: string | null;
   showChart: (chartId: string) => void;
   pairHistory: PairHistoryRow[];
+  moveStudent: (
+    from: { deskId: string; index: number },
+    to: { deskId: string; index: number }
+  ) => void;
   generate: () => Promise<void>;
   generating: boolean;
   lastResult: { newPairs: number; totalPairs: number } | null;
@@ -240,6 +247,54 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
 
   const showChart = useCallback((chartId: string) => setActiveChartId(chartId), []);
 
+  /**
+   * Flytter en elev til et annet sete. Er setet opptatt, bytter de to elevene
+   * plass. Par-historikken justeres slik at varmekartet stemmer med hvem som
+   * faktisk sitter sammen etter flyttingen.
+   */
+  const moveStudent = useCallback(
+    (from: { deskId: string; index: number }, to: { deskId: string; index: number }) => {
+      if (!activeClassId || !activeChartId) return;
+      if (from.deskId === to.deskId && from.index === to.index) return;
+
+      const chart = charts.find((c) => c.id === activeChartId);
+      if (!chart) return;
+
+      const seatsFor = (deskId: string) =>
+        clampSeats(desks.find((d) => d.id === deskId)?.seats ?? 2);
+
+      const nextLayout: DeskAssignments = {};
+      for (const desk of desks) {
+        const current = chart.layout[desk.id] ?? [];
+        nextLayout[desk.id] = Array.from(
+          { length: clampSeats(desk.seats) },
+          (_, i) => current[i] ?? null
+        );
+      }
+      if (!nextLayout[from.deskId] || !nextLayout[to.deskId]) return;
+      if (to.index >= seatsFor(to.deskId)) return;
+
+      const moving = nextLayout[from.deskId][from.index] ?? null;
+      if (!moving) return;
+      nextLayout[from.deskId][from.index] = nextLayout[to.deskId][to.index] ?? null;
+      nextLayout[to.deskId][to.index] = moving;
+
+      const before = pairsFromAssignments(chart.layout);
+      const after = pairsFromAssignments(nextLayout);
+
+      setCharts((prev) =>
+        prev.map((c) => (c.id === activeChartId ? { ...c, layout: nextLayout } : c))
+      );
+
+      updateChartLayout(activeChartId, nextLayout)
+        .then(() => adjustPairHistory(activeClassId, before, after))
+        .then(() => fetchPairHistory(activeClassId))
+        .then(setPairHistory)
+        .catch((e) => setError(e instanceof Error ? e.message : String(e)));
+    },
+    [activeClassId, activeChartId, charts, desks]
+  );
+
   const generate = useCallback(async () => {
     if (!activeClassId) return;
     setGenerating(true);
@@ -281,6 +336,7 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
       activeChartId,
       showChart,
       pairHistory,
+      moveStudent,
       generate,
       generating,
       lastResult,
@@ -307,6 +363,7 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
       activeChartId,
       showChart,
       pairHistory,
+      moveStudent,
       generate,
       generating,
       lastResult,

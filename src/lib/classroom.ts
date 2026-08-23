@@ -5,6 +5,8 @@ export const SEAT_WIDTH = 84;
 export const SEAT_HEIGHT = 50;
 export const SEAT_GAP = 6;
 export const DESK_PADDING = 6;
+/** Topplinja på pulten: viser bordnavnet og er draghåndtaket for pulten. */
+export const DESK_HEADER_HEIGHT = 20;
 export const GAP_X = 28;
 export const GAP_Y = 40;
 export const PADDING = 16;
@@ -34,12 +36,16 @@ export function normalizeDesks(raw: unknown): Desk[] {
   if (!Array.isArray(raw)) return [];
   return raw
     .filter((d): d is Record<string, unknown> => typeof d === "object" && d !== null)
-    .map((d) => ({
-      id: String(d.id ?? newDeskId()),
-      x: Number(d.x) || 0,
-      y: Number(d.y) || 0,
-      seats: clampSeats(Number(d.seats) || DEFAULT_SEATS),
-    }));
+    .map((d) => {
+      const desk: Desk = {
+        id: String(d.id ?? newDeskId()),
+        x: Number(d.x) || 0,
+        y: Number(d.y) || 0,
+        seats: clampSeats(Number(d.seats) || DEFAULT_SEATS),
+      };
+      if (typeof d.name === "string" && d.name.trim()) desk.name = d.name.trim();
+      return desk;
+    });
 }
 
 /**
@@ -59,11 +65,11 @@ export function deskWidth(seats: number): number {
 
 export function deskHeight(seats: number): number {
   const { rows } = seatGrid(seats);
-  return rows * SEAT_HEIGHT + (rows - 1) * SEAT_GAP + DESK_PADDING * 2;
+  return rows * SEAT_HEIGHT + (rows - 1) * SEAT_GAP + DESK_PADDING * 2 + DESK_HEADER_HEIGHT;
 }
 
 /** Høyden på en vanlig pult med én rad plasser. */
-export const DESK_HEIGHT = SEAT_HEIGHT + DESK_PADDING * 2;
+export const DESK_HEIGHT = SEAT_HEIGHT + DESK_PADDING * 2 + DESK_HEADER_HEIGHT;
 
 export function createDesk(seats = DEFAULT_SEATS): Desk {
   return { id: newDeskId(), x: 0, y: 0, seats: clampSeats(seats) };
@@ -168,6 +174,18 @@ export function addDesk(desks: Desk[], seats = DEFAULT_SEATS): Desk[] {
 /** Endrer antall plasser ved én pult. */
 export function setDeskSeats(desks: Desk[], deskId: string, seats: number): Desk[] {
   return desks.map((d) => (d.id === deskId ? { ...d, seats: clampSeats(seats) } : d));
+}
+
+/** Gir pulten et navn (tom streng fjerner navnet). */
+export function setDeskName(desks: Desk[], deskId: string, name: string): Desk[] {
+  const trimmed = name.trim();
+  return desks.map((d) => {
+    if (d.id !== deskId) return d;
+    const next = { ...d };
+    if (trimmed) next.name = trimmed;
+    else delete next.name;
+    return next;
+  });
 }
 
 /** Samlet antall elevplasser i klasserommet. */

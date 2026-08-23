@@ -9,6 +9,7 @@ import {
   ensureCapacity,
   removeColumn,
   removeRow,
+  setDeskName,
   setDeskSeats,
   tidyDesks,
   totalSeats,
@@ -58,6 +59,7 @@ export default function ClassDetailPage() {
     deskCols,
     applyDesks,
     assignments,
+    moveStudent,
     generate,
     generating,
     lastResult,
@@ -178,6 +180,8 @@ export default function ClassDetailPage() {
         onDesksChange={(next, persist) => applyDesks(next, undefined, persist)}
         onRemoveDesk={(deskId) => applyDesks(desks.filter((d) => d.id !== deskId))}
         onSeatsChange={(deskId, next) => applyDesks(setDeskSeats(desks, deskId, next))}
+        onRenameDesk={(deskId, name) => applyDesks(setDeskName(desks, deskId, name))}
+        onMoveStudent={moveStudent}
       />
     </div>
   );
