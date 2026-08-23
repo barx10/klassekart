@@ -10,10 +10,15 @@ export interface Desk {
   x: number;
   y: number;
   seats: number;
+  /** Valgfritt bordnavn, f.eks. "Bord 1" eller "Grønn gruppe". */
+  name?: string;
 }
 
-/** Hvilke elever som sitter ved hvilken pult: pult-id -> elev-id-er (maks 2). */
-export type DeskAssignments = Record<string, string[]>;
+/**
+ * Hvilke elever som sitter hvor: pult-id -> elev-id per sete. `null` er et
+ * ledig sete, slik at en elev kan flyttes til sete 2 selv om sete 1 er tomt.
+ */
+export type DeskAssignments = Record<string, (string | null)[]>;
 
 export interface SchoolClass {
   id: string;

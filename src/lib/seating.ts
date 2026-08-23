@@ -1,5 +1,5 @@
 import { DEFAULT_SEATS } from "./classroom";
-import type { PairHistoryRow, Student } from "./types";
+import type { DeskAssignments, PairHistoryRow, Student } from "./types";
 
 /** Elevfordeling som en liste av pulter, hver med elevene som sitter der. */
 export type SeatingGroups = string[][];
@@ -115,6 +115,12 @@ export function pairsFromGroups(groups: SeatingGroups): [string, string][] {
     }
   }
   return pairs;
+}
+
+/** Alle elevpar i et lagret klassekart (ledige seter hoppes over). */
+export function pairsFromAssignments(layout: DeskAssignments): [string, string][] {
+  const groups = Object.values(layout).map((seats) => seats.filter((id): id is string => Boolean(id)));
+  return pairsFromGroups(groups);
 }
 
 /** Antall par i kartet som ikke har sittet sammen før (basert på historikk før dette kartet). */

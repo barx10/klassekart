@@ -2,6 +2,7 @@
 
 import { useRef, useState } from "react";
 import {
+  DESK_HEADER_HEIGHT,
   MAX_SEATS,
   MIN_SEATS,
   SEAT_GAP,
@@ -14,6 +15,11 @@ import {
 import { genderDotClass } from "@/lib/gender";
 import type { Desk, DeskAssignments, Student } from "@/lib/types";
 
+interface SeatRef {
+  deskId: string;
+  index: number;
+}
+
 interface Props {
   desks: Desk[];
   assignments: DeskAssignments;
@@ -22,29 +28,36 @@ interface Props {
   onDesksChange: (desks: Desk[], persist: boolean) => void;
   onRemoveDesk: (deskId: string) => void;
   onSeatsChange: (deskId: string, seats: number) => void;
+  onRenameDesk: (deskId: string, name: string) => void;
+  onMoveStudent: (from: SeatRef, to: SeatRef) => void;
 }
 
-interface DragState {
+interface DeskDrag {
   deskId: string;
   offsetX: number;
   offsetY: number;
   moved: boolean;
 }
 
-function Seat({ student }: { student: Student | undefined }) {
-  if (!student) {
-    return (
-      <div className="flex h-full w-full items-center justify-center rounded-lg border border-dashed border-border text-[11px] text-subtle">
-        Ledig
-      </div>
-    );
-  }
-  return (
-    <div className="flex h-full w-full items-center gap-1.5 overflow-hidden rounded-lg border border-border bg-surface px-2">
-      <span className={`h-2 w-2 shrink-0 rounded-full ${genderDotClass(student.gender)}`} aria-hidden />
-      <span className="truncate text-[13px] font-medium">{student.name}</span>
-    </div>
-  );
+interface StudentDrag {
+  from: SeatRef;
+  studentId: string;
+  x: number;
+  y: number;
+  over: SeatRef | null;
+}
+
+function seatKey(seat: SeatRef): string {
+  return `${seat.deskId}:${seat.index}`;
+}
+
+/** Finner setet under markøren. Ghost-elementet har pointer-events: none. */
+function seatAtPoint(x: number, y: number): SeatRef | null {
+  const el = document.elementFromPoint(x, y);
+  const seatEl = el?.closest<HTMLElement>("[data-seat]");
+  if (!seatEl?.dataset.seat) return null;
+  const [deskId, index] = seatEl.dataset.seat.split(":");
+  return { deskId, index: Number(index) };
 }
 
 export default function ClassroomCanvas({
@@ -54,18 +67,22 @@ export default function ClassroomCanvas({
   onDesksChange,
   onRemoveDesk,
   onSeatsChange,
+  onRenameDesk,
+  onMoveStudent,
 }: Props) {
   const canvasRef = useRef<HTMLDivElement>(null);
-  const [drag, setDrag] = useState<DragState | null>(null);
+  const [deskDrag, setDeskDrag] = useState<DeskDrag | null>(null);
+  const [studentDrag, setStudentDrag] = useState<StudentDrag | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
 
-  function handlePointerDown(e: React.PointerEvent, desk: Desk) {
+  // --- Flytting av pulter (draghåndtaket er topplinja) ---------------------
+
+  function handleHeaderPointerDown(e: React.PointerEvent, desk: Desk) {
     if ((e.target as HTMLElement).closest("[data-no-drag]")) return;
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    const rect = canvas.getBoundingClientRect();
+    const rect = canvasRef.current?.getBoundingClientRect();
+    if (!rect) return;
     e.currentTarget.setPointerCapture(e.pointerId);
-    setDrag({
+    setDeskDrag({
       deskId: desk.id,
       offsetX: e.clientX - rect.left - desk.x,
       offsetY: e.clientY - rect.top - desk.y,
@@ -73,38 +90,61 @@ export default function ClassroomCanvas({
     });
   }
 
-  function handlePointerMove(e: React.PointerEvent) {
-    if (!drag) return;
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    const rect = canvas.getBoundingClientRect();
-    const x = Math.max(0, e.clientX - rect.left - drag.offsetX);
-    const y = Math.max(0, e.clientY - rect.top - drag.offsetY);
-    if (!drag.moved) setDrag({ ...drag, moved: true });
+  function handleHeaderPointerMove(e: React.PointerEvent) {
+    if (!deskDrag) return;
+    const rect = canvasRef.current?.getBoundingClientRect();
+    if (!rect) return;
+    const x = Math.max(0, e.clientX - rect.left - deskDrag.offsetX);
+    const y = Math.max(0, e.clientY - rect.top - deskDrag.offsetY);
+    if (!deskDrag.moved) setDeskDrag({ ...deskDrag, moved: true });
     onDesksChange(
-      desks.map((d) => (d.id === drag.deskId ? { ...d, x, y } : d)),
+      desks.map((d) => (d.id === deskDrag.deskId ? { ...d, x, y } : d)),
       false
     );
   }
 
-  function handlePointerUp(e: React.PointerEvent) {
-    if (!drag) return;
+  function handleHeaderPointerUp(e: React.PointerEvent) {
+    if (!deskDrag) return;
     e.currentTarget.releasePointerCapture(e.pointerId);
     // Et klikk uten bevegelse velger pulten i stedet for å flytte den.
-    if (!drag.moved) {
-      setSelectedId((prev) => (prev === drag.deskId ? null : drag.deskId));
-      setDrag(null);
+    if (!deskDrag.moved) {
+      setSelectedId((prev) => (prev === deskDrag.deskId ? null : deskDrag.deskId));
+      setDeskDrag(null);
       return;
     }
     // Flytt pulten bakerst i lista slik at den tegnes øverst — ellers kan en
     // pult bli liggende skjult under en den er dratt oppå.
-    const moved = desks.find((d) => d.id === drag.deskId);
-    const reordered = moved ? [...desks.filter((d) => d.id !== drag.deskId), moved] : desks;
-    setDrag(null);
+    const moved = desks.find((d) => d.id === deskDrag.deskId);
+    const reordered = moved ? [...desks.filter((d) => d.id !== deskDrag.deskId), moved] : desks;
+    setDeskDrag(null);
     onDesksChange(reordered, true);
   }
 
+  // --- Flytting av elever mellom seter ------------------------------------
+
+  function handleSeatPointerDown(e: React.PointerEvent, seat: SeatRef, studentId: string) {
+    e.currentTarget.setPointerCapture(e.pointerId);
+    setStudentDrag({ from: seat, studentId, x: e.clientX, y: e.clientY, over: null });
+  }
+
+  function handleSeatPointerMove(e: React.PointerEvent) {
+    if (!studentDrag) return;
+    const over = seatAtPoint(e.clientX, e.clientY);
+    setStudentDrag({ ...studentDrag, x: e.clientX, y: e.clientY, over });
+  }
+
+  function handleSeatPointerUp(e: React.PointerEvent) {
+    if (!studentDrag) return;
+    e.currentTarget.releasePointerCapture(e.pointerId);
+    const target = seatAtPoint(e.clientX, e.clientY);
+    if (target && seatKey(target) !== seatKey(studentDrag.from)) {
+      onMoveStudent(studentDrag.from, target);
+    }
+    setStudentDrag(null);
+  }
+
   const { width, height } = canvasSize(desks);
+  const draggedStudent = studentDrag ? studentsById.get(studentDrag.studentId) : undefined;
 
   return (
     <div className="rounded-2xl border border-border bg-background p-4 sm:p-6">
@@ -122,21 +162,17 @@ export default function ClassroomCanvas({
             {desks.map((desk) => {
               const seated = assignments[desk.id] ?? [];
               const seats = clampSeats(desk.seats);
-              const isDragging = drag?.deskId === desk.id;
+              const isDragging = deskDrag?.deskId === desk.id;
               const isSelected = selectedId === desk.id;
               return (
                 <div
                   key={desk.id}
-                  onPointerDown={(e) => handlePointerDown(e, desk)}
-                  onPointerMove={handlePointerMove}
-                  onPointerUp={handlePointerUp}
-                  onPointerCancel={handlePointerUp}
-                  className={`group absolute touch-none select-none rounded-xl border bg-surface-raised p-1.5 shadow-sm ${
+                  className={`group absolute rounded-xl border bg-surface-raised shadow-sm ${
                     isDragging
-                      ? "z-30 cursor-grabbing border-accent shadow-lg"
+                      ? "z-30 border-accent shadow-lg"
                       : isSelected
-                        ? "z-20 cursor-grab border-accent"
-                        : "z-10 cursor-grab border-border hover:border-accent/50"
+                        ? "z-20 border-accent"
+                        : "z-10 border-border hover:border-accent/50"
                   }`}
                   style={{
                     left: desk.x,
@@ -145,26 +181,96 @@ export default function ClassroomCanvas({
                     height: deskHeight(seats),
                   }}
                 >
+                  {/* Topplinje: bordnavn + draghåndtak for pulten */}
                   <div
-                    className="grid h-full"
+                    onPointerDown={(e) => handleHeaderPointerDown(e, desk)}
+                    onPointerMove={handleHeaderPointerMove}
+                    onPointerUp={handleHeaderPointerUp}
+                    onPointerCancel={handleHeaderPointerUp}
+                    title="Dra for å flytte pulten, klikk for å endre den"
+                    className={`flex touch-none select-none items-center justify-center rounded-t-xl px-2 text-[11px] ${
+                      isDragging ? "cursor-grabbing" : "cursor-grab"
+                    } ${desk.name ? "font-medium text-muted" : "text-subtle"}`}
+                    style={{ height: DESK_HEADER_HEIGHT }}
+                  >
+                    <span className="truncate">{desk.name || "⋯"}</span>
+                  </div>
+
+                  <div
+                    className="grid px-1.5 pb-1.5"
                     style={{
+                      height: `calc(100% - ${DESK_HEADER_HEIGHT}px)`,
                       gridTemplateColumns: `repeat(${seatGrid(seats).cols}, minmax(0, 1fr))`,
                       gridAutoRows: "minmax(0, 1fr)",
                       gap: SEAT_GAP,
                     }}
                   >
-                    {Array.from({ length: seats }, (_, i) => (
-                      <Seat key={i} student={seated[i] ? studentsById.get(seated[i]) : undefined} />
-                    ))}
+                    {Array.from({ length: seats }, (_, i) => {
+                      const seat: SeatRef = { deskId: desk.id, index: i };
+                      const studentId = seated[i] ?? null;
+                      const student = studentId ? studentsById.get(studentId) : undefined;
+                      const isOver = studentDrag?.over && seatKey(studentDrag.over) === seatKey(seat);
+                      const isSource =
+                        studentDrag && seatKey(studentDrag.from) === seatKey(seat);
+
+                      if (!student) {
+                        return (
+                          <div
+                            key={i}
+                            data-seat={seatKey(seat)}
+                            className={`flex h-full w-full items-center justify-center rounded-lg border border-dashed text-[11px] ${
+                              isOver ? "border-accent bg-accent-soft text-accent" : "border-border text-subtle"
+                            }`}
+                          >
+                            Ledig
+                          </div>
+                        );
+                      }
+
+                      return (
+                        <div
+                          key={i}
+                          data-seat={seatKey(seat)}
+                          onPointerDown={(e) => handleSeatPointerDown(e, seat, student.id)}
+                          onPointerMove={handleSeatPointerMove}
+                          onPointerUp={handleSeatPointerUp}
+                          onPointerCancel={handleSeatPointerUp}
+                          title={`${student.name} — dra for å bytte plass`}
+                          className={`flex h-full w-full cursor-grab touch-none select-none items-center gap-1.5 overflow-hidden rounded-lg border px-2 ${
+                            isOver
+                              ? "border-accent bg-accent-soft"
+                              : isSource
+                                ? "border-dashed border-accent/60 bg-surface opacity-50"
+                                : "border-border bg-surface"
+                          }`}
+                        >
+                          <span
+                            className={`h-2 w-2 shrink-0 rounded-full ${genderDotClass(student.gender)}`}
+                            aria-hidden
+                          />
+                          <span className="truncate text-[13px] font-medium">{student.name}</span>
+                        </div>
+                      );
+                    })}
                   </div>
 
                   {isSelected && (
-                    // Verktøylinja ligger under pulten: over pulten ville den blitt
+                    // Verktøylinja ligger under pulten: over den ville den blitt
                     // klippet bort av rullefeltet rundt lerretet.
                     <div
                       data-no-drag
-                      className="absolute top-full left-1/2 z-40 mt-1.5 flex -translate-x-1/2 items-center gap-0.5 rounded-lg border border-border bg-surface-raised px-1 py-0.5 shadow-md"
+                      className="absolute top-full left-1/2 z-40 mt-1.5 flex -translate-x-1/2 items-center gap-1 rounded-lg border border-border bg-surface-raised px-1.5 py-1 shadow-md"
                     >
+                      <input
+                        defaultValue={desk.name ?? ""}
+                        placeholder="Bordnavn"
+                        onBlur={(e) => onRenameDesk(desk.id, e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter") e.currentTarget.blur();
+                        }}
+                        className="w-28 rounded border border-border bg-surface px-1.5 py-0.5 text-[11px] outline-none focus:border-accent"
+                      />
+                      <span className="h-4 w-px bg-border" aria-hidden />
                       <button
                         onClick={() => onSeatsChange(desk.id, seats - 1)}
                         disabled={seats <= MIN_SEATS}
@@ -184,7 +290,7 @@ export default function ClassroomCanvas({
                       >
                         +
                       </button>
-                      <span className="mx-0.5 h-4 w-px bg-border" aria-hidden />
+                      <span className="h-4 w-px bg-border" aria-hidden />
                       <button
                         onClick={() => {
                           setSelectedId(null);
@@ -204,9 +310,23 @@ export default function ClassroomCanvas({
         </div>
       )}
 
+      {/* Elevkortet som følger markøren under draging */}
+      {studentDrag && draggedStudent && (
+        <div
+          className="pointer-events-none fixed z-50 flex items-center gap-1.5 rounded-lg border border-accent bg-surface-raised px-2 py-1.5 shadow-lg"
+          style={{ left: studentDrag.x + 12, top: studentDrag.y + 12 }}
+        >
+          <span
+            className={`h-2 w-2 shrink-0 rounded-full ${genderDotClass(draggedStudent.gender)}`}
+            aria-hidden
+          />
+          <span className="text-[13px] font-medium">{draggedStudent.name}</span>
+        </div>
+      )}
+
       <p className="mt-4 text-center text-xs text-subtle">
-        Dra pultene dit de står i klasserommet ditt. Klikk en pult for å endre antall plasser eller fjerne
-        den. &laquo;Rydd opp&raquo; stiller dem pent på rekke igjen.
+        Dra et elevnavn til et annet sete for å bytte plass. Dra topplinja på en pult for å flytte den, og
+        klikk den for å gi bordet navn eller endre antall plasser.
       </p>
     </div>
   );
