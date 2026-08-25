@@ -22,6 +22,7 @@ import {
   fetchChartHistory,
   fetchClasses,
   fetchPairHistory,
+  resetPairHistory as apiResetPairHistory,
   generateAndSaveChart,
   updateChartLayout,
   updateDesks,
@@ -37,7 +38,6 @@ import type {
   SeatingChart,
   Student,
 } from "./types";
-import { isSupabaseConfigured } from "./supabase";
 
 interface AppDataValue {
   classes: SchoolClass[];
@@ -48,7 +48,7 @@ interface AppDataValue {
 
   createClass: (name: string, defaultContactTeacher?: string) => Promise<SchoolClass>;
   deleteClass: (id: string) => Promise<void>;
-  addStudents: (classId: string, names: string[], gender: Gender, contactTeacher: string | null) => Promise<void>;
+  addStudents: (classId: string, names: string[], gender: Gender | null, contactTeacher: string | null) => Promise<void>;
   updateStudent: (id: string, fields: Partial<Pick<Student, "name" | "gender" | "contact_teacher">>) => Promise<void>;
   removeStudent: (id: string) => Promise<void>;
 
@@ -64,6 +64,8 @@ interface AppDataValue {
   showChart: (chartId: string) => void;
   deleteChart: (chartId: string) => Promise<void>;
   pairHistory: PairHistoryRow[];
+  /** Nullstiller par-historikken for klassen som vises (skoleårsslutt). */
+  resetPairHistory: () => Promise<void>;
   moveStudent: (
     from: { deskId: string; index: number },
     to: { deskId: string; index: number }
@@ -72,6 +74,8 @@ interface AppDataValue {
   generating: boolean;
   lastResult: { newPairs: number; totalPairs: number } | null;
   classLoading: boolean;
+  /** Leser alt inn på nytt fra lagringen — etter at en sikkerhetskopi er hentet inn. */
+  reload: () => Promise<void>;
 }
 
 const AppDataContext = createContext<AppDataValue | null>(null);
@@ -87,7 +91,7 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
 
   const [classes, setClasses] = useState<SchoolClass[]>([]);
   const [students, setStudents] = useState<Student[]>([]);
-  const [loading, setLoading] = useState(isSupabaseConfigured);
+  const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   const [charts, setCharts] = useState<SeatingChart[]>([]);
@@ -95,6 +99,9 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
   const [pairHistory, setPairHistory] = useState<PairHistoryRow[]>([]);
   const [loadedClassId, setLoadedClassId] = useState<string | null>(null);
   const [generating, setGenerating] = useState(false);
+  // Teller opp når lagringen er byttet ut under føttene på oss (import), slik
+  // at klassen som vises leses inn på nytt selv om adressen står stille.
+  const [dataVersion, setDataVersion] = useState(0);
   const [generateResult, setGenerateResult] = useState<
     { classId: string; newPairs: number; totalPairs: number } | null
   >(null);
@@ -102,20 +109,34 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // --- Globale data: klasser og elever ------------------------------------
-  useEffect(() => {
-    if (!isSupabaseConfigured) return;
-    Promise.all([fetchClasses(), fetchAllStudents()])
-      .then(([cls, studs]) => {
+  const loadAll = useCallback(
+    () =>
+      Promise.all([fetchClasses(), fetchAllStudents()]).then(([cls, studs]) => {
         setClasses(cls);
         setStudents(studs);
-      })
+      }),
+    []
+  );
+
+  useEffect(() => {
+    loadAll()
       .catch((e) => setError(e instanceof Error ? e.message : String(e)))
       .finally(() => setLoading(false));
-  }, []);
+  }, [loadAll]);
+
+  const reload = useCallback(async () => {
+    setCharts([]);
+    setActiveChartId(null);
+    setPairHistory([]);
+    setLoadedClassId(null);
+    setGenerateResult(null);
+    await loadAll();
+    setDataVersion((v) => v + 1);
+  }, [loadAll]);
 
   // --- Data for klassen som vises nå --------------------------------------
   useEffect(() => {
-    if (!isSupabaseConfigured || !activeClassId) return;
+    if (!activeClassId) return;
     let cancelled = false;
 
     Promise.all([fetchChartHistory(activeClassId), fetchPairHistory(activeClassId)])
@@ -133,7 +154,7 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
     return () => {
       cancelled = true;
     };
-  }, [activeClassId]);
+  }, [activeClassId, dataVersion]);
 
   const activeClass = useMemo(
     () => classes.find((c) => c.id === activeClassId) ?? null,
@@ -214,7 +235,7 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const addStudents = useCallback(
-    async (classId: string, names: string[], gender: Gender, contactTeacher: string | null) => {
+    async (classId: string, names: string[], gender: Gender | null, contactTeacher: string | null) => {
       const created = await apiAddStudents(classId, names, gender, contactTeacher);
       setStudents((prev) =>
         [...prev, ...created].sort((a, b) => a.name.localeCompare(b.name, "no"))
@@ -241,6 +262,12 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const showChart = useCallback((chartId: string) => setActiveChartId(chartId), []);
+
+  const resetPairHistory = useCallback(async () => {
+    if (!activeClassId) return;
+    await apiResetPairHistory(activeClassId);
+    setPairHistory([]);
+  }, [activeClassId]);
 
   /**
    * Sletter ett tidligere klassekart. Parene kartet bidro med telles ned igjen,
@@ -368,11 +395,13 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
       showChart,
       deleteChart,
       pairHistory,
+      resetPairHistory,
       moveStudent,
       generate,
       generating,
       lastResult,
       classLoading,
+      reload,
     }),
     [
       classes,
@@ -395,11 +424,13 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
       showChart,
       deleteChart,
       pairHistory,
+      resetPairHistory,
       moveStudent,
       generate,
       generating,
       lastResult,
       classLoading,
+      reload,
     ]
   );
 

@@ -1,6 +1,7 @@
 "use client";
 
 import Image from "next/image";
+import Link from "next/link";
 import Modal from "./Modal";
 import { secondaryButton } from "@/lib/ui";
 
@@ -54,6 +55,25 @@ export default function AboutModal({ onClose }: { onClose: () => void }) {
             Jeg heter Kenneth, er lærer og skriver om skole på Lærerliv. Ved siden
             av undervisningen lager jeg små verktøy som løser praktiske problemer i
             skolehverdagen — Klassekart er ett av dem.
+          </p>
+        </div>
+
+        <div>
+          <p className="mb-1 font-semibold text-foreground">Personvern</p>
+          <p>
+            Klassekart lagrer klassene dine i denne nettleseren, på maskinen du
+            sitter ved. Ingenting sendes til en server, og ingen andre kan se
+            det. Bruk gjerne fornavn eller kallenavn på elevene — et klassekart
+            trenger ikke fullt navn.
+          </p>
+          <p className="mt-2">
+            Fordi alt ligger lokalt, forsvinner klassene om nettleserdataene
+            tømmes. Lagre derfor en kopi til fil fra menyen innimellom, og legg
+            den der skolen ellers lagrer elevopplysninger.{" "}
+            <Link href="/personvern" onClick={onClose} className="text-accent-text hover:underline">
+              Mer om personvern
+            </Link>
+            .
           </p>
         </div>
 

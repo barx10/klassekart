@@ -12,7 +12,7 @@ import {
   deskWidth,
   seatGrid,
 } from "@/lib/classroom";
-import { genderDotClass, genderLabel } from "@/lib/gender";
+import { genderDotClass, genderName } from "@/lib/gender";
 import type { Desk, DeskAssignments, Student } from "@/lib/types";
 import { inputClassSm } from "@/lib/ui";
 
@@ -537,9 +537,9 @@ export default function ClassroomCanvas({
                             onPointerUp={handleSeatPointerUp}
                             onPointerCancel={handleSeatPointerUp}
                             onKeyDown={(e) => handleSeatKeyDown(e, seat, student)}
-                            aria-label={`${student.name}, ${genderLabel[
-                              student.gender
-                            ].toLowerCase()}, sete ${i + 1} ved ${label}. Enter for å bytte plass.`}
+                            aria-label={`${student.name}${
+                              student.gender ? `, ${genderName(student.gender).toLowerCase()}` : ""
+                            }, sete ${i + 1} ved ${label}. Enter for å bytte plass.`}
                             aria-pressed={Boolean(isPicked)}
                             title={`${student.name} — dra, eller trykk Enter, for å bytte plass`}
                             className={`flex h-full w-full cursor-grab touch-none select-none items-center gap-1.5 overflow-hidden rounded-lg border px-2 text-left ${
@@ -552,12 +552,14 @@ export default function ClassroomCanvas({
                                     : "border-border bg-surface"
                             }`}
                           >
-                            <span
-                              className={`h-2 w-2 shrink-0 rounded-full ${genderDotClass(
-                                student.gender
-                              )}`}
-                              aria-hidden
-                            />
+                            {student.gender && (
+                              <span
+                                className={`h-2 w-2 shrink-0 rounded-full ${genderDotClass(
+                                  student.gender
+                                )}`}
+                                aria-hidden
+                              />
+                            )}
                             <span className="min-w-0 flex-1 leading-tight">
                               <span className="block truncate text-[13px] font-medium">
                                 {firstName(student.name)}
@@ -697,10 +699,12 @@ export default function ClassroomCanvas({
           className="pointer-events-none fixed z-50 flex items-center gap-1.5 rounded-lg border border-accent bg-surface-raised px-2 py-1.5 shadow-lg"
           style={{ left: studentDrag.x + 12, top: studentDrag.y + 12 }}
         >
-          <span
-            className={`h-2 w-2 shrink-0 rounded-full ${genderDotClass(draggedStudent.gender)}`}
-            aria-hidden
-          />
+          {draggedStudent.gender && (
+            <span
+              className={`h-2 w-2 shrink-0 rounded-full ${genderDotClass(draggedStudent.gender)}`}
+              aria-hidden
+            />
+          )}
           <span className="text-[13px] font-medium">{draggedStudent.name}</span>
         </div>
       )}

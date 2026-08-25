@@ -41,7 +41,8 @@ export interface Student {
   id: string;
   class_id: string;
   name: string;
-  gender: Gender;
+  /** Valgfritt: `null` er «ikke oppgitt», og er det vanlige. */
+  gender: Gender | null;
   contact_teacher: string | null;
   created_at: string;
 }
