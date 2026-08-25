@@ -3,7 +3,7 @@
 import { useMemo, useState } from "react";
 import { useAppData } from "@/lib/app-data";
 import type { Gender, Student } from "@/lib/types";
-import { genderOptions, genderLabel, genderDotClass } from "@/lib/gender";
+import { genderOptions, genderLabel, genderName, genderDotClass } from "@/lib/gender";
 import ConfirmDialog from "./ConfirmDialog";
 import { inputClassSm, primaryButton, plural } from "@/lib/ui";
 
@@ -19,7 +19,7 @@ const FILTER_THRESHOLD = 12;
 export default function StudentManager({ classId, students, defaultContactTeacher }: Props) {
   const { addStudents, updateStudent, removeStudent, setError } = useAppData();
   const [bulkNames, setBulkNames] = useState("");
-  const [bulkGender, setBulkGender] = useState<Gender>("annet");
+  const [bulkGender, setBulkGender] = useState<Gender | null>(null);
   const [bulkContact, setBulkContact] = useState(defaultContactTeacher ?? "");
   const [adding, setAdding] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -98,10 +98,11 @@ export default function StudentManager({ classId, students, defaultContactTeache
           </label>
           <select
             id="nye-elever-kjonn"
-            value={bulkGender}
-            onChange={(e) => setBulkGender(e.target.value as Gender)}
+            value={bulkGender ?? ""}
+            onChange={(e) => setBulkGender((e.target.value as Gender) || null)}
             className={inputClassSm}
           >
+            <option value="">Kjønn (valgfritt)</option>
             {genderOptions.map((g) => (
               <option key={g} value={g}>
                 {genderLabel[g]}
@@ -128,7 +129,8 @@ export default function StudentManager({ classId, students, defaultContactTeache
         </button>
         <p className="text-[11px] text-subtle">
           Kjønn og kontaktlærer gjelder alle i denne bunken. Du kan endre hver elev etterpå ved å
-          klikke på navnet.
+          klikke på navnet. Kjønn er valgfritt — det brukes bare til fargeprikken, ikke til
+          fordelingen.
         </p>
       </form>
 
@@ -164,11 +166,13 @@ export default function StudentManager({ classId, students, defaultContactTeache
                   aria-expanded={isEditing}
                   className="flex w-full items-center gap-1.5 rounded px-1 py-2 text-left hover:text-accent-text"
                 >
-                  <span
-                    className={`h-2 w-2 shrink-0 rounded-full ${genderDotClass(s.gender)}`}
-                    title={genderLabel[s.gender]}
-                  />
-                  <span className="sr-only">{genderLabel[s.gender]}. </span>
+                  {s.gender && (
+                    <span
+                      className={`h-2 w-2 shrink-0 rounded-full ${genderDotClass(s.gender)}`}
+                      title={genderLabel[s.gender]}
+                    />
+                  )}
+                  <span className="sr-only">{genderName(s.gender)}. </span>
                   <span className="min-w-0 flex-1 truncate text-xs">{s.name}</span>
                   {s.contact_teacher && (
                     <span
@@ -207,10 +211,11 @@ export default function StudentManager({ classId, students, defaultContactTeache
                     </label>
                     <select
                       id={`kjonn-${s.id}`}
-                      value={s.gender}
-                      onChange={(e) => patch(s, { gender: e.target.value as Gender })}
+                      value={s.gender ?? ""}
+                      onChange={(e) => patch(s, { gender: (e.target.value as Gender) || null })}
                       className={inputClassSm}
                     >
+                      <option value="">Kjønn (valgfritt)</option>
                       {genderOptions.map((g) => (
                         <option key={g} value={g}>
                           {genderLabel[g]}

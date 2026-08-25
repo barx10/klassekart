@@ -136,7 +136,7 @@ export async function fetchAllStudents(): Promise<Student[]> {
 export async function addStudents(
   classId: string,
   names: string[],
-  gender: Gender,
+  gender: Gender | null,
   contactTeacher: string | null
 ): Promise<Student[]> {
   return mutate((data) => {
@@ -180,6 +180,17 @@ export async function deleteStudent(id: string): Promise<void> {
 
 export async function fetchPairHistory(classId: string): Promise<PairHistoryRow[]> {
   return read((data) => data.pairs.filter((p) => p.class_id === classId));
+}
+
+/**
+ * Nullstiller par-historikken for klassen — typisk ved skoleårsslutt, når
+ * elevene skal stokkes fritt igjen. Tidligere kart blir stående; de er en
+ * logg over hva som faktisk skjedde.
+ */
+export async function resetPairHistory(classId: string): Promise<void> {
+  await mutate((data) => {
+    data.pairs = data.pairs.filter((p) => p.class_id !== classId);
+  });
 }
 
 export async function fetchChartHistory(classId: string): Promise<SeatingChart[]> {

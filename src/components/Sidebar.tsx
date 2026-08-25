@@ -11,7 +11,7 @@ import Modal from "./Modal";
 import ConfirmDialog from "./ConfirmDialog";
 import NewClassForm from "./NewClassForm";
 import { backupFilename, exportBackup, parseBackup, replaceAll, type LocalData } from "@/lib/local-db";
-import { ghostButton, plural } from "@/lib/ui";
+import { ghostButton, plural, secondaryButton } from "@/lib/ui";
 
 type Section = "elever" | "historikk" | null;
 
@@ -87,6 +87,7 @@ export default function Sidebar({ open, onClose, onAbout }: Props) {
     showChart,
     deleteChart,
     pairHistory,
+    resetPairHistory,
     setError,
     reload,
   } = useAppData();
@@ -102,6 +103,16 @@ export default function Sidebar({ open, onClose, onAbout }: Props) {
     null
   );
   const [pendingImport, setPendingImport] = useState<{ data: LocalData; name: string } | null>(null);
+  const [confirmReset, setConfirmReset] = useState(false);
+
+  async function doResetPairs() {
+    setConfirmReset(false);
+    try {
+      await resetPairHistory();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    }
+  }
   const fileInput = useRef<HTMLInputElement>(null);
 
   /** Laster ned alt som ligger lagret som én JSON-fil. */
@@ -423,9 +434,49 @@ export default function Sidebar({ open, onClose, onAbout }: Props) {
           title={`Oversikt over par – ${activeClass.name}`}
           description="Hvor mange ganger hvert elevpar har sittet ved samme bord."
           onClose={() => setShowHeatmap(false)}
+          footer={
+            <>
+              <button
+                type="button"
+                onClick={() => {
+                  // Bekreftelsen får stå alene — to dialoger oppå hverandre
+                  // ville slåss om fokuset.
+                  setShowHeatmap(false);
+                  setConfirmReset(true);
+                }}
+                className={`${ghostButton()} mr-auto hover:text-danger`}
+              >
+                Nullstill historikken
+              </button>
+              <button
+                type="button"
+                onClick={() => setShowHeatmap(false)}
+                className={secondaryButton()}
+              >
+                Lukk
+              </button>
+            </>
+          }
         >
           <PairHeatmap students={activeStudents} historyRows={pairHistory} />
         </Modal>
+      )}
+
+      {confirmReset && activeClass && (
+        <ConfirmDialog
+          title="Nullstille par-historikken?"
+          body={
+            <>
+              Alle tellingene for{" "}
+              <strong className="text-foreground">{activeClass.name}</strong> settes til null, så
+              neste klassekart fordeler elevene som om ingen har sittet sammen før. Bruk det ved
+              skoleårsslutt. Elevene og de tidligere kartene beholdes.
+            </>
+          }
+          confirmLabel="Nullstill"
+          onConfirm={doResetPairs}
+          onCancel={() => setConfirmReset(false)}
+        />
       )}
 
       {pendingChartDelete && (

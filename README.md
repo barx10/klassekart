@@ -8,15 +8,17 @@ hvem som er kontaktlærer for de ulike elevene.
 
 - **Klasser** – opprett en eller flere klasser, med en valgfri
   standard-kontaktlærer.
-- **Elever** – legg til flere elever samtidig (ett navn per linje), sett
-  kjønn (jente/gutt/annet) og kontaktlærer per elev direkte i skjemaet der du
-  legger dem inn (klassen kan ha flere kontaktlærere for ulike elever).
+- **Elever** – legg til flere elever samtidig (ett navn per linje), og sett
+  kontaktlærer per elev direkte i skjemaet der du legger dem inn (klassen kan
+  ha flere kontaktlærere for ulike elever). Kjønn er valgfritt: oppgir du det,
+  får eleven en fargeprikk, men fordelingen bruker det ikke.
 - **Generer klassekart** – fordeler elevene i bordgrupper. Algoritmen
   (`src/lib/seating.ts`) bruker simulert herding for å minimere hvor mange
   ganger de samme elevene havner sammen igjen, basert på lagret historikk –
   så den unngår å gjenta de samme gruppene gang på gang.
 - **Oversikt over par** – en varmekart-matrise som viser hvor mange ganger
-  hvert elevpar har sittet sammen.
+  hvert elevpar har sittet sammen. Historikken kan nullstilles ved
+  skoleårsslutt, så neste kart fordeler elevene med blanke ark.
 - **Tidligere kart** – bla gjennom tidligere genererte klassekart, og slett
   dem enkeltvis. Parene et slettet kart bidro med telles ned igjen, så
   oversikten over par stemmer med kartene som faktisk finnes.

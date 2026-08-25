@@ -18,7 +18,7 @@ innlogging å vedlikeholde.
 | 0 | Ingen ekte elevnavn i sky-databasen | ✅ appen sier fra i «Om Klassekart» |
 | 1 | Flytt lagringen til nettleseren, med eksport/import som sikkerhetskopi | ✅ bygget |
 | 1b | Slett Supabase-prosjektet når du har hentet ut det du vil beholde | ⬜ du må gjøre dette selv |
-| 2 | Dataminimering: kjønn valgfritt, par-historikk nullstilles ved skoleårsslutt | ⬜ |
+| 2 | Dataminimering: kjønn valgfritt, par-historikk kan nullstilles | ✅ bygget |
 | 3 | Si fra til rektor at du bruker verktøyet, på linje med et regneark | ⬜ |
 | 4 | Innlogging, databehandleravtale, DPIA — *bare* hvis appen en dag skal ut til andre skoler | ikke nå |
 
@@ -250,15 +250,16 @@ automatisk ved deploy.
 
 Det du ikke lagrer, trenger du ikke sikre, dokumentere eller slette.
 
-- **Kjønn brukes ikke til noe.** Algoritmen i `src/lib/seating.ts` ser ikke på
-  feltet i det hele tatt – det vises bare som en farget prikk. Gjør feltet
-  valgfritt og slått av som standard, eller fjern det. Dette er den enkleste
-  reelle forbedringen i hele dokumentet.
+- **Kjønn er valgfritt** *(bygget)*. Algoritmen i `src/lib/seating.ts` ser
+  ikke på feltet i det hele tatt – det er bare en farget prikk. Nå står det
+  tomt som standard, og en elev uten oppgitt kjønn får ingen prikk. Da lagres
+  opplysningen heller ikke.
 - **Fornavn holder.** Eventuelt fornavn + forbokstav der to elever heter det
   samme. Et klassekart trenger ikke fullt navn.
 - **Kontaktlærer** kan være initialer.
-- **Par-historikk** bør nullstilles ved skoleårets slutt – den er bare
-  interessant for inneværende klasse.
+- **Par-historikk** nullstilles fra *Oversikt over par → Nullstill
+  historikken* *(bygget)*. Gjør det ved skoleårets slutt – tellingene er bare
+  interessante for inneværende klasse.
 
 ## 7. Papirene som må på plass før ekte bruk
 
@@ -296,8 +297,8 @@ kommunens ansvar, men det er du som må levere underlaget:
 3. ⬜ Hent ut det du vil beholde fra Supabase (SQL-en i seksjon 1), og slett
    så prosjektet. Fjern `NEXT_PUBLIC_SUPABASE_*` fra Vercel. Appen kan
    fortsatt ligge på Vercel; den er bare en side uten database bak.
-4. ⬜ Dataminimering: kjønn valgfritt, sletting av par-historikk ved
-   skoleårsslutt.
+4. ✅ Dataminimering: kjønn valgfritt og tomt som standard, og par-historikken
+   kan nullstilles ved skoleårsslutt.
 5. ⬜ Kort personvernavsnitt i appen: hva som lagres, hvor det ligger, hvordan
    man sletter det.
 6. ⬜ Si fra til rektor at du og et par kolleger bruker verktøyet.
