@@ -45,6 +45,7 @@ src/
     layout.tsx                  App-skall: AppDataProvider + Sidebar
     page.tsx                    Sender videre til første klasse
     klasser/[classId]/page.tsx  Verktøylinje + klasserommet (tynn side)
+    personvern/page.tsx         Personvernsiden læreren kan vise fram
   components/
     Sidebar.tsx                 Klasser, elever, tidligere kart, par-oversikt
     ClassroomCanvas.tsx         Klasserommet: pulter, draging, seter
@@ -58,7 +59,7 @@ src/
     api.ts                      Datalaget: klasser, elever, kart, par
     local-db.ts                 Lagring i nettleseren (IndexedDB) + sikkerhetskopi
     types.ts                    Delte typer
-docs/personvern.md              Hvorfor lagringen er lokal, og veien videre
+docs/personvern.md              Vurderingene bak, og veien videre om appen skal deles
 ```
 
 ### `AppDataProvider` er navet

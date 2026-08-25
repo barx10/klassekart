@@ -1,5 +1,7 @@
 "use client";
 
+import Link from "next/link";
+
 export default function Footer({ onAbout }: { onAbout: () => void }) {
   return (
     <footer className="mt-8 border-t border-border px-4 py-6 text-center">
@@ -7,6 +9,12 @@ export default function Footer({ onAbout }: { onAbout: () => void }) {
         <button type="button" onClick={onAbout} className="text-accent-text hover:underline">
           Om Klassekart
         </button>
+        <span className="text-subtle" aria-hidden>
+          ·
+        </span>
+        <Link href="/personvern" className="text-accent-text hover:underline">
+          Personvern
+        </Link>
         <span className="text-subtle" aria-hidden>
           ·
         </span>

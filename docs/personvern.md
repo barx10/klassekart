@@ -19,8 +19,9 @@ innlogging å vedlikeholde.
 | 1 | Flytt lagringen til nettleseren, med eksport/import som sikkerhetskopi | ✅ bygget |
 | 1b | Slett Supabase-prosjektet når du har hentet ut det du vil beholde | ⬜ du må gjøre dette selv |
 | 2 | Dataminimering: kjønn valgfritt, par-historikk kan nullstilles | ✅ bygget |
-| 3 | Si fra til rektor at du bruker verktøyet, på linje med et regneark | ⬜ |
-| 4 | Innlogging, databehandleravtale, DPIA — *bare* hvis appen en dag skal ut til andre skoler | ikke nå |
+| 3 | Personvernside i appen | ✅ `/personvern` |
+| 4 | Si fra til rektor at du bruker verktøyet, på linje med et regneark | ⬜ |
+| 5 | Innlogging, databehandleravtale, DPIA — *bare* hvis appen en dag skal ut til andre skoler | ikke nå |
 
 Trinn 1–2 er kode. Trinn 3 er en samtale, ikke en avtalerunde. Merk at
 **lokal lagring ikke gjør deg fri fra GDPR** – det er fortsatt kommunen som er
@@ -299,8 +300,9 @@ kommunens ansvar, men det er du som må levere underlaget:
    fortsatt ligge på Vercel; den er bare en side uten database bak.
 4. ✅ Dataminimering: kjønn valgfritt og tomt som standard, og par-historikken
    kan nullstilles ved skoleårsslutt.
-5. ⬜ Kort personvernavsnitt i appen: hva som lagres, hvor det ligger, hvordan
-   man sletter det.
+5. ✅ Personvernside i appen (`/personvern`, lenket fra bunnteksten og fra «Om
+   Klassekart»): hva som lagres, hvor det ligger, hvem som kan se det, og
+   hvordan man sletter det.
 6. ⬜ Si fra til rektor at du og et par kolleger bruker verktøyet.
 
 Skal appen senere ut til andre skoler, starter du på seksjon 4 —

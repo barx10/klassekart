@@ -1,6 +1,7 @@
 "use client";
 
 import Image from "next/image";
+import Link from "next/link";
 import Modal from "./Modal";
 import { secondaryButton } from "@/lib/ui";
 
@@ -68,7 +69,11 @@ export default function AboutModal({ onClose }: { onClose: () => void }) {
           <p className="mt-2">
             Fordi alt ligger lokalt, forsvinner klassene om nettleserdataene
             tømmes. Lagre derfor en kopi til fil fra menyen innimellom, og legg
-            den der skolen ellers lagrer elevopplysninger.
+            den der skolen ellers lagrer elevopplysninger.{" "}
+            <Link href="/personvern" onClick={onClose} className="text-accent-text hover:underline">
+              Mer om personvern
+            </Link>
+            .
           </p>
         </div>
 

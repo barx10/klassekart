@@ -64,8 +64,12 @@ Det har to konsekvenser:
   *Lagre kopi til fil* er måten å flytte dataene mellom dem.
 
 Kopien inneholder elevnavnene i klartekst, så den hører hjemme der skolen
-ellers lagrer elevopplysninger. [`docs/personvern.md`](./docs/personvern.md)
-forklarer valget, og hva som må på plass hvis appen en dag skal brukes av
+ellers lagrer elevopplysninger.
+
+Appen har en egen personvernside på `/personvern` (lenket fra bunnteksten) som
+sier det samme til læreren som bruker den.
+[`docs/personvern.md`](./docs/personvern.md) er den lange versjonen: hvorfor
+lagringen er lokal, og hva som må på plass hvis appen en dag skal brukes av
 lærere ved andre skoler.
 
 ## Prosjektstruktur
