@@ -136,6 +136,10 @@ variabler i Vercel — ikke merket «Sensitive», for da er de tomme under bygge
 ## Personvern
 
 Appen lagrer elevnavn og kjønn, altså personopplysninger om barn, uten
-innlogging. Er dette på vei mot ekte bruk i skolen, hør etter om pålogging,
-databehandleravtale med Supabase, EU-region og godkjenning fra
-kommunen/personvernombud — det er ikke på plass ennå.
+innlogging. RLS-policyene er `using (true)`, og anon-nøkkelen ligger i
+JS-bundelen — databasen er i praksis åpen for alle som finner adressen.
+
+`docs/personvern.md` er planen for å komme i orden: hva som lagres, hvem som er
+behandlingsansvarlig, tre mulige veier (lokal lagring, pseudonymer, innlogging),
+SQL-skissen for `owner_id` + RLS, og hva som må avklares med kommunen. Hold den
+oppdatert når noe av dette faktisk bygges.

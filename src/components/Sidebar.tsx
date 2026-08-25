@@ -92,7 +92,7 @@ export default function Sidebar({ open, onClose, onAbout }: Props) {
   const pathname = usePathname();
   const router = useRouter();
 
-  const [section, setSection] = useState<Section>("elever");
+  const [section, setSection] = useState<Section>(null);
   const [showHeatmap, setShowHeatmap] = useState(false);
   const [showForm, setShowForm] = useState(false);
   const [pendingDelete, setPendingDelete] = useState<{ id: string; name: string } | null>(null);
