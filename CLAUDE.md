@@ -15,9 +15,8 @@ npm run lint       # eslint — må være grønn før commit
 npm run build      # next build — må være grønn før commit
 ```
 
-`.env.local` (kopier fra `.env.example`) trenger `NEXT_PUBLIC_SUPABASE_URL` og
-`NEXT_PUBLIC_SUPABASE_ANON_KEY`. Uten dem starter appen, men viser et
-konfigurasjonsvarsel i stedet for data.
+Appen trenger ingen miljøvariabler og ingen database — all lagring skjer i
+nettleseren.
 
 ### Visuell testing i denne containeren
 
@@ -56,9 +55,10 @@ src/
     app-data.tsx                All delt tilstand (se under)
     classroom.ts                Pult-geometri: bredde/høyde, rutenett, rydd opp
     seating.ts                  Fordelingsalgoritmen (simulert herding)
-    api.ts                      Alle Supabase-kall
+    api.ts                      Datalaget: klasser, elever, kart, par
+    local-db.ts                 Lagring i nettleseren (IndexedDB) + sikkerhetskopi
     types.ts                    Delte typer
-supabase/schema.sql             Kjøres i Supabase SQL Editor ved skjemaendring
+docs/personvern.md              Hvorfor lagringen er lokal, og veien videre
 ```
 
 ### `AppDataProvider` er navet
@@ -105,20 +105,26 @@ er det algoritmen bruker for å spre elevene. **Manuelle flyttinger justerer
 den** (`adjustPairHistory`): par som forsvinner telles ned, nye telles opp.
 Uten det ville varmekartet vist parene slik de var da kartet ble generert.
 
-## Database
+## Lagring
 
-Endrer du `supabase/schema.sql`, må brukeren kjøre filen i Supabase SQL Editor
-— det skjer ikke automatisk. Si tydelig fra når en endring krever det, og enda
-tydeligere hvis migreringen sletter data.
+`src/lib/local-db.ts` lagrer **hele datasettet som ett objekt** under én nøkkel
+i IndexedDB. Datamengden er små kilobyte, og til gjengjeld blir en
+sikkerhetskopi en ren `JSON.stringify`, og en endring kan aldri skrive halve
+sannheten til disk.
 
-Skjemaet er skrevet så det kan kjøres på nytt (`if not exists`,
-`add column if not exists`, idempotente policyer). Nye Supabase-prosjekter
-mangler av og til `grant` for `anon`-rollen; grantene nederst i filen fikser
-«permission denied for table».
+To ting å holde på:
 
-Felt som ligger inne i `classes.desks` (jsonb) — som `seats` og `name` —
-trenger **ingen** migrering. Legg heller nye pult-egenskaper der enn som nye
-kolonner. `normalizeDesks()` fyller inn standardverdier for eldre rader.
+- **Alle lesninger og skrivinger går gjennom køen** (`read`/`mutate`). Uten den
+  kunne et pultflytt som lagres med 300 ms forsinkelse rekke å lese samme
+  utgangspunkt som en elev-endring, og skrive over den.
+- **`mutate` skriver ikke hvis callbacken kaster.** Derfor kan
+  `generateAndSaveChart` gjøre alt sitt i én endring: kartet blir aldri lagret
+  uten at parene det ga blir talt med.
+
+Formatet har et `version`-felt, og `normalize()` fyller inn det som mangler.
+Endrer du formatet, hev `BACKUP_VERSION` og la eldre sikkerhetskopier kunne
+leses — brukeren kan ha en fil fra i fjor. Nye pult-egenskaper hører fortsatt
+hjemme inne i `desks`; `normalizeDesks()` fyller inn standardverdier.
 
 ## Arbeidsflyt
 
@@ -129,17 +135,18 @@ slettes ofte, så start fra `origin/main` på nytt arbeid:
 git fetch origin main && git checkout -B claude/klassekartprogram-0709fs origin/main
 ```
 
-Deploy går til Vercel (prosjekt `klassekart`) automatisk fra `main`.
-`NEXT_PUBLIC_`-variabler bakes inn ved bygg, så de må stå som **vanlige**
-variabler i Vercel — ikke merket «Sensitive», for da er de tomme under bygget.
+Deploy går til Vercel (prosjekt `klassekart`) automatisk fra `main`. Det er
+ingen miljøvariabler å sette; appen er ren frontend.
 
 ## Personvern
 
-Appen lagrer elevnavn og kjønn, altså personopplysninger om barn, uten
-innlogging. RLS-policyene er `using (true)`, og anon-nøkkelen ligger i
-JS-bundelen — databasen er i praksis åpen for alle som finner adressen.
+Appen lagrer elevnavn og kjønn, altså personopplysninger om barn. Derfor ligger
+dataene i nettleseren og ikke i en database: ingenting forlater maskinen til
+læreren, appen er ikke databehandler for noen, og det finnes ingen delt
+database å sikre.
 
-`docs/personvern.md` er planen for å komme i orden: hva som lagres, hvem som er
-behandlingsansvarlig, tre mulige veier (lokal lagring, pseudonymer, innlogging),
-SQL-skissen for `owner_id` + RLS, og hva som må avklares med kommunen. Hold den
-oppdatert når noe av dette faktisk bygges.
+**Ikke foreslå å flytte lagringen til en server igjen** uten at det er
+etterspurt. Det valget er tatt bevisst, og `docs/personvern.md` forklarer hva
+det i så fall koster: innlogging, databehandleravtale med hver kommune, DPIA og
+en leverandørrolle. Dokumentet har oppskriften den dagen appen skal ut til
+andre skoler — hold det oppdatert når noe endres.

@@ -13,13 +13,14 @@ dropp databasen, lagre alt i nettleseren, og hele leverandør-siden av GDPR
 forsvinner – ingen databehandleravtale, ingen underleverandører, ingen
 innlogging å vedlikeholde.
 
-| Trinn | Hva | Når |
+| Trinn | Hva | Status |
 | --- | --- | --- |
-| 0 | Ingen ekte elevnavn i dagens sky-database. Fornavn eller kallenavn. | Straks |
-| 1 | Flytt lagringen til nettleseren, med eksport/import som sikkerhetskopi. Legg ned Supabase-prosjektet. | Anbefalt neste steg |
-| 2 | Dataminimering: kjønn valgfritt, par-historikk nullstilles ved skoleårsslutt | Sammen med trinn 1 |
-| 3 | Si fra til rektor at du bruker verktøyet, på linje med et regneark | Før ekte elevnavn legges inn |
-| 4 | Innlogging, databehandleravtale, DPIA — *bare* hvis appen en dag skal ut til andre skoler | Ikke nå |
+| 0 | Ingen ekte elevnavn i sky-databasen | ✅ appen sier fra i «Om Klassekart» |
+| 1 | Flytt lagringen til nettleseren, med eksport/import som sikkerhetskopi | ✅ bygget |
+| 1b | Slett Supabase-prosjektet når du har hentet ut det du vil beholde | ⬜ du må gjøre dette selv |
+| 2 | Dataminimering: kjønn valgfritt, par-historikk nullstilles ved skoleårsslutt | ⬜ |
+| 3 | Si fra til rektor at du bruker verktøyet, på linje med et regneark | ⬜ |
+| 4 | Innlogging, databehandleravtale, DPIA — *bare* hvis appen en dag skal ut til andre skoler | ikke nå |
 
 Trinn 1–2 er kode. Trinn 3 er en samtale, ikke en avtalerunde. Merk at
 **lokal lagring ikke gjør deg fri fra GDPR** – det er fortsatt kommunen som er
@@ -27,26 +28,42 @@ ansvarlig for elevopplysningene, og du behandler dem som ansatt. Men det
 flytter appen fra «ny skytjeneste kommunen må vurdere» til «verktøy på
 skole-PC-en», og det er en helt annen bakke å gå opp.
 
-## 1. Hva appen behandler i dag
+## 1. Hva appen behandler
 
-| Data | Hvor | Personopplysning? |
-| --- | --- | --- |
-| Klassenavn (`classes.name`) | Supabase | Indirekte – «7B Fjellheim skole» peker på en bestemt gruppe barn |
-| Elevnavn (`students.name`) | Supabase | Ja, om barn |
-| Kjønn (`students.gender`) | Supabase | Ja |
-| Kontaktlærer (`students.contact_teacher`, `classes.default_contact_teacher`) | Supabase | Ja, om ansatt |
-| Klassekart (`seating_charts.layout`) | Supabase | Ja – hvem som satt hvor, når |
-| Par-historikk (`pair_history`) | Supabase | Ja – en liten sosial kartlegging av klassen over tid |
+| Data | Personopplysning? |
+| --- | --- |
+| Klassenavn | Indirekte – «7B Fjellheim skole» peker på en bestemt gruppe barn |
+| Elevnavn | Ja, om barn |
+| Kjønn | Ja |
+| Kontaktlærer | Ja, om ansatt |
+| Klassekart – hvem som satt hvor, når | Ja |
+| Par-historikk | Ja – en liten sosial kartlegging av klassen over tid |
 
-**Databasen er i praksis åpen.** `NEXT_PUBLIC_SUPABASE_ANON_KEY` sendes ut i
-JavaScript-en til alle som besøker siden, og RLS-policyene i
-`supabase/schema.sql` er `using (true) with check (true)`. Alle som finner
-adressen til appen kan altså lese, endre og slette alle klasser og alle elever
-– også andres. Nøkkelen er ikke en hemmelighet; den er ment å være offentlig,
-og det er RLS som skal gjøre jobben.
+Alt dette ligger nå i nettleseren til den som skrev det inn (IndexedDB), og
+sendes ingen steder.
 
-Derfor er **trinn 0** viktigst: legg ikke inn fulle elevnavn i dagens
-løsning. Fornavn, forbokstav eller kallenavn gjør appen like brukbar til
+**Slik var det ikke før.** Fram til denne endringen lå dataene i en
+Supabase-database uten innlogging: anon-nøkkelen sendes ut i JavaScript-en til
+alle som besøker siden, og RLS-policyene var `using (true) with check (true)`.
+Alle som fant adressen til appen kunne lese, endre og slette alle klasser og
+alle elever. Nøkkelen er ikke en hemmelighet — den er ment å være offentlig, og
+det er RLS som skal gjøre jobben.
+
+**Gjenstår derfor: slett Supabase-prosjektet.** Så lenge det står der, står
+dataene i det også. Vil du ha dem med over i den lokale lagringen, kjør denne i
+SQL Editor, lagre svaret som en `.json`-fil, og bruk *Hent inn fra fil* i menyen:
+
+```sql
+select jsonb_build_object(
+  'version', 1,
+  'classes',  (select coalesce(jsonb_agg(to_jsonb(c)), '[]'::jsonb) from classes c),
+  'students', (select coalesce(jsonb_agg(to_jsonb(s)), '[]'::jsonb) from students s),
+  'charts',   (select coalesce(jsonb_agg(to_jsonb(x)), '[]'::jsonb) from seating_charts x),
+  'pairs',    (select coalesce(jsonb_agg(to_jsonb(p)), '[]'::jsonb) from pair_history p)
+);
+```
+
+Uansett gjelder fortsatt rådet fra **trinn 0**: legg ikke inn fulle elevnavn. Fornavn, forbokstav eller kallenavn gjør appen like brukbar til
 klassekart, og gjør et eventuelt innbrudd langt mindre alvorlig.
 
 ## 2. Hvem er ansvarlig for hva
@@ -69,7 +86,7 @@ med rektor og kommunens personvernombud før ekte navn legges inn.
 
 ## 3. Tre veier videre
 
-### A. Alt lokalt i nettleseren *(anbefalt for deg og kollegene)*
+### A. Alt lokalt i nettleseren *(dette er bygget)*
 Data lagres i IndexedDB på lærerens maskin, med eksport/import av en JSON-fil
 som sikkerhetskopi og som måte å flytte mellom enheter.
 
@@ -111,11 +128,11 @@ seksjon 4 og 5 oppskriften. Fram til da er de en plan for framtida, ikke en
 arbeidsliste.
 
 **Men «lokalt» er ikke det samme som «trygt».** Det som faktisk må håndteres
-med A:
+med A — punkt én er løst med *Lagre kopi til fil* nederst i menyen, resten er
+rutine hos deg:
 
 - **Ingen sikkerhetskopi.** Tømmer nettleseren data — eller får du ny PC —
-  er alt borte. Derfor må eksport til fil være en synlig knapp i appen, ikke
-  noe man finner i en meny. Legg eksportfila der skolen allerede lagrer
+  er alt borte. Lagre en kopi jevnlig, og legg fila der skolen allerede lagrer
   elevopplysninger (OneDrive/Teams-området deres), som er godkjent fra før.
 - **Delt maskin.** Data ligger i nettleserprofilen. Låner noen den innloggede
   Windows-brukeren din, ser de også klasselistene. Egen brukerkonto på PC-en,
@@ -129,8 +146,11 @@ med A:
 ## 4. Innlogging – slik ser det ut
 
 > Denne seksjonen og den neste gjelder vei **C**, altså hvis appen en dag skal
-> brukes av lærere utenfor din egen skole. Går du for lokal lagring, kan du
-> hoppe til seksjon 6.
+> brukes av lærere utenfor din egen skole. Slik appen står i dag, er dette en
+> plan for framtida — hopp til seksjon 6.
+>
+> Det gamle databaseskjemaet ligger i git-historikken:
+> `git show e0df26a:supabase/schema.sql`.
 
 ### Hvilken innloggingsmetode?
 
@@ -268,18 +288,19 @@ kommunens ansvar, men det er du som må levere underlaget:
 
 ## 8. Rekkefølge
 
-1. Fjern ekte navn fra dagens database, og skriv i appen at den ikke er klar
-   for fulle navn ennå. *(gjort – se «Om Klassekart»)*
-2. Bytt `src/lib/api.ts` mot en lokal lagringsadapter (IndexedDB), med
-   eksport og import av en JSON-fil. Appen ellers merker ingen forskjell —
-   `AppDataProvider` er det eneste som kaller api-et.
-3. Slett Supabase-prosjektet og `NEXT_PUBLIC_SUPABASE_*` fra Vercel når
-   dataene er ute. Appen kan fortsatt ligge på Vercel; den blir bare en side
-   uten database bak.
-4. Dataminimering: kjønn valgfritt, sletting av par-historikk ved skoleårsslutt.
-5. Kort personvernavsnitt i appen: hva som lagres, hvor det ligger, hvordan
+1. ✅ Skriv i appen at den ikke er klar for fulle navn ennå *(se «Om
+   Klassekart»)*.
+2. ✅ Bytt lagringen til nettleseren, med eksport og import av en JSON-fil.
+   `src/lib/local-db.ts` er lagringen, `src/lib/api.ts` er laget over —
+   resten av appen merket ingen forskjell.
+3. ⬜ Hent ut det du vil beholde fra Supabase (SQL-en i seksjon 1), og slett
+   så prosjektet. Fjern `NEXT_PUBLIC_SUPABASE_*` fra Vercel. Appen kan
+   fortsatt ligge på Vercel; den er bare en side uten database bak.
+4. ⬜ Dataminimering: kjønn valgfritt, sletting av par-historikk ved
+   skoleårsslutt.
+5. ⬜ Kort personvernavsnitt i appen: hva som lagres, hvor det ligger, hvordan
    man sletter det.
-6. Si fra til rektor at du og et par kolleger bruker verktøyet.
+6. ⬜ Si fra til rektor at du og et par kolleger bruker verktøyet.
 
 Skal appen senere ut til andre skoler, starter du på seksjon 4 —
 men da er det en helt annen samtale, og den tas før koden skrives.

@@ -37,7 +37,6 @@ import type {
   SeatingChart,
   Student,
 } from "./types";
-import { isSupabaseConfigured } from "./supabase";
 
 interface AppDataValue {
   classes: SchoolClass[];
@@ -72,6 +71,8 @@ interface AppDataValue {
   generating: boolean;
   lastResult: { newPairs: number; totalPairs: number } | null;
   classLoading: boolean;
+  /** Leser alt inn på nytt fra lagringen — etter at en sikkerhetskopi er hentet inn. */
+  reload: () => Promise<void>;
 }
 
 const AppDataContext = createContext<AppDataValue | null>(null);
@@ -87,7 +88,7 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
 
   const [classes, setClasses] = useState<SchoolClass[]>([]);
   const [students, setStudents] = useState<Student[]>([]);
-  const [loading, setLoading] = useState(isSupabaseConfigured);
+  const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   const [charts, setCharts] = useState<SeatingChart[]>([]);
@@ -95,6 +96,9 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
   const [pairHistory, setPairHistory] = useState<PairHistoryRow[]>([]);
   const [loadedClassId, setLoadedClassId] = useState<string | null>(null);
   const [generating, setGenerating] = useState(false);
+  // Teller opp når lagringen er byttet ut under føttene på oss (import), slik
+  // at klassen som vises leses inn på nytt selv om adressen står stille.
+  const [dataVersion, setDataVersion] = useState(0);
   const [generateResult, setGenerateResult] = useState<
     { classId: string; newPairs: number; totalPairs: number } | null
   >(null);
@@ -102,20 +106,34 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // --- Globale data: klasser og elever ------------------------------------
-  useEffect(() => {
-    if (!isSupabaseConfigured) return;
-    Promise.all([fetchClasses(), fetchAllStudents()])
-      .then(([cls, studs]) => {
+  const loadAll = useCallback(
+    () =>
+      Promise.all([fetchClasses(), fetchAllStudents()]).then(([cls, studs]) => {
         setClasses(cls);
         setStudents(studs);
-      })
+      }),
+    []
+  );
+
+  useEffect(() => {
+    loadAll()
       .catch((e) => setError(e instanceof Error ? e.message : String(e)))
       .finally(() => setLoading(false));
-  }, []);
+  }, [loadAll]);
+
+  const reload = useCallback(async () => {
+    setCharts([]);
+    setActiveChartId(null);
+    setPairHistory([]);
+    setLoadedClassId(null);
+    setGenerateResult(null);
+    await loadAll();
+    setDataVersion((v) => v + 1);
+  }, [loadAll]);
 
   // --- Data for klassen som vises nå --------------------------------------
   useEffect(() => {
-    if (!isSupabaseConfigured || !activeClassId) return;
+    if (!activeClassId) return;
     let cancelled = false;
 
     Promise.all([fetchChartHistory(activeClassId), fetchPairHistory(activeClassId)])
@@ -133,7 +151,7 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
     return () => {
       cancelled = true;
     };
-  }, [activeClassId]);
+  }, [activeClassId, dataVersion]);
 
   const activeClass = useMemo(
     () => classes.find((c) => c.id === activeClassId) ?? null,
@@ -373,6 +391,7 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
       generating,
       lastResult,
       classLoading,
+      reload,
     }),
     [
       classes,
@@ -400,6 +419,7 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
       generating,
       lastResult,
       classLoading,
+      reload,
     ]
   );
 

@@ -33,56 +33,38 @@ størrelseshåndtaket endrer bredde og høyde.
 ## Teknologi
 
 - [Next.js](https://nextjs.org) (App Router) + TypeScript + Tailwind CSS
-- [Supabase](https://supabase.com) (Postgres) for lagring
+- IndexedDB i nettleseren for lagring – ingen database, ingen server
 
 ## Kom i gang
-
-### 1. Opprett en Supabase-database
-
-1. Gå til [supabase.com](https://supabase.com) og opprett et gratis prosjekt
-   (du kan også bruke [Neon](https://neon.tech) rå-Postgres – da kjører du
-   `supabase/schema.sql` mot Neon-databasen din med `psql` og bytter ut
-   `src/lib/supabase.ts`/`src/lib/api.ts` med et REST-lag mot Neon i stedet,
-   siden Neon ikke har en ferdig klient-SDK slik Supabase har).
-2. Åpne **SQL Editor** i Supabase-prosjektet og kjør innholdet i
-   [`supabase/schema.sql`](./supabase/schema.sql). Dette oppretter tabellene
-   `classes`, `students`, `seating_charts` og `pair_history`.
-3. Gå til **Project Settings → API** og kopier **Project URL** og
-   **anon public key**.
-
-### 2. Sett opp miljøvariabler
-
-```bash
-cp .env.example .env.local
-```
-
-Fyll inn `NEXT_PUBLIC_SUPABASE_URL` og `NEXT_PUBLIC_SUPABASE_ANON_KEY` i
-`.env.local` med verdiene fra steg 1.
-
-### 3. Installer og kjør lokalt
 
 ```bash
 npm install
 npm run dev
 ```
 
-Åpne [http://localhost:3000](http://localhost:3000).
+Åpne [http://localhost:3000](http://localhost:3000). Det er alt – appen
+trenger ingen miljøvariabler og ingen database. Deploy er en vanlig
+Next.js-deploy, for eksempel til [Vercel](https://vercel.com).
 
-### 4. Deploy
+## Hvor lagres dataene?
 
-Appen er en vanlig Next.js-app og kan deployes f.eks. til
-[Vercel](https://vercel.com): koble til repoet og legg inn de samme
-miljøvariablene (`NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`)
-under prosjektets **Environment Variables**.
+Alt du legger inn – klasser, elever, klassekart og par-historikk – lagres i
+**din egen nettleser** (IndexedDB), på maskinen du bruker. Ingenting sendes
+til en server, og ingen andre kan se det.
 
-## Om tilgang/sikkerhet
+Det har to konsekvenser:
 
-MVP-en har ingen innlogging – alle som har lenken til appen (og
-Supabase-nøkkelen den er bygget med) kan lese og endre alle klasser. Dette
-er greit for en enkelt lærer som bruker appen selv, men bør utvides med
-ekte pålogging (f.eks. Supabase Auth) og radnivå-sikkerhet
-(`auth.uid()`-baserte policyer i `supabase/schema.sql`) før den deles med
-flere lærere eller gjøres offentlig tilgjengelig.
+- **Ta sikkerhetskopi.** Nederst i menyen ligger *Lagre kopi til fil*, som
+  laster ned alt som én JSON-fil, og *Hent inn fra fil*, som leser den
+  tilbake. Tømmer du nettleserdata eller bytter maskin uten en slik kopi, er
+  klassene borte.
+- **Ingen synk.** Skole-PC-en og hjemme-PC-en har hver sin lagring. Filen fra
+  *Lagre kopi til fil* er måten å flytte dataene mellom dem.
+
+Kopien inneholder elevnavnene i klartekst, så den hører hjemme der skolen
+ellers lagrer elevopplysninger. [`docs/personvern.md`](./docs/personvern.md)
+forklarer valget, og hva som må på plass hvis appen en dag skal brukes av
+lærere ved andre skoler.
 
 ## Prosjektstruktur
 
@@ -107,11 +89,11 @@ src/
   lib/
     seating.ts                 Algoritme for å generere klassekart
     classroom.ts               Pultgeometri og oppstilling
-    api.ts                     Datalag mot Supabase
-    supabase.ts                Supabase-klient
+    api.ts                     Datalaget appen bruker (klasser, elever, kart)
+    local-db.ts                Lagring i nettleseren + eksport/import
     ui.ts                      Delte knappe- og feltstiler
     gender.ts                  Kjønnsetiketter og -farger
     types.ts                   Delte TypeScript-typer
-supabase/
-  schema.sql                   Database-skjema
+docs/
+  personvern.md                Personvern: hva som lagres, og hvorfor lokalt
 ```

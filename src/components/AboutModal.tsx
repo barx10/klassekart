@@ -60,11 +60,15 @@ export default function AboutModal({ onClose }: { onClose: () => void }) {
         <div>
           <p className="mb-1 font-semibold text-foreground">Personvern</p>
           <p>
-            Klassekart lagrer det du skriver inn i en database i skyen, og har
-            foreløpig ingen innlogging. Bruk derfor fornavn eller kallenavn på
-            elevene — ikke fulle navn, fødselsdato eller sensitive
-            opplysninger. Skal verktøyet brukes med ekte elevopplysninger, må
-            det avklares med skolen din først.
+            Klassekart lagrer klassene dine i denne nettleseren, på maskinen du
+            sitter ved. Ingenting sendes til en server, og ingen andre kan se
+            det. Bruk gjerne fornavn eller kallenavn på elevene — et klassekart
+            trenger ikke fullt navn.
+          </p>
+          <p className="mt-2">
+            Fordi alt ligger lokalt, forsvinner klassene om nettleserdataene
+            tømmes. Lagre derfor en kopi til fil fra menyen innimellom, og legg
+            den der skolen ellers lagrer elevopplysninger.
           </p>
         </div>
 

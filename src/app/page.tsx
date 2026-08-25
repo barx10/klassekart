@@ -3,9 +3,7 @@
 import { useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { useAppData } from "@/lib/app-data";
-import ConfigWarning from "@/components/ConfigWarning";
 import NewClassForm from "@/components/NewClassForm";
-import { isSupabaseConfigured } from "@/lib/supabase";
 
 export default function HomePage() {
   const router = useRouter();
@@ -16,10 +14,6 @@ export default function HomePage() {
       router.replace(`/klasser/${classes[0].id}`);
     }
   }, [loading, classes, router]);
-
-  if (!isSupabaseConfigured) {
-    return <ConfigWarning />;
-  }
 
   if (loading || classes.length > 0) {
     return (

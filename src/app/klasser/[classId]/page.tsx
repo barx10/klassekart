@@ -17,9 +17,7 @@ import {
   tidyDesks,
   totalSeats,
 } from "@/lib/classroom";
-import ConfigWarning from "@/components/ConfigWarning";
 import ClassroomCanvas from "@/components/ClassroomCanvas";
-import { isSupabaseConfigured } from "@/lib/supabase";
 import { plural, primaryButton, secondaryButton } from "@/lib/ui";
 
 /** −/+ rundt en verdi. Verdien vises, så du ser hva du justerer. */
@@ -104,7 +102,6 @@ export default function ClassDetailPage() {
 
   const activeChart = charts.find((c) => c.id === activeChartId);
 
-  if (!isSupabaseConfigured) return <ConfigWarning />;
   if (loading)
     return (
       <p className="text-sm text-muted" role="status">

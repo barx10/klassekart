@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import Link from "next/link";
 import Image from "next/image";
 import { usePathname, useRouter } from "next/navigation";
@@ -10,6 +10,7 @@ import PairHeatmap from "./PairHeatmap";
 import Modal from "./Modal";
 import ConfirmDialog from "./ConfirmDialog";
 import NewClassForm from "./NewClassForm";
+import { backupFilename, exportBackup, parseBackup, replaceAll, type LocalData } from "@/lib/local-db";
 import { ghostButton, plural } from "@/lib/ui";
 
 type Section = "elever" | "historikk" | null;
@@ -87,6 +88,7 @@ export default function Sidebar({ open, onClose, onAbout }: Props) {
     deleteChart,
     pairHistory,
     setError,
+    reload,
   } = useAppData();
 
   const pathname = usePathname();
@@ -99,6 +101,55 @@ export default function Sidebar({ open, onClose, onAbout }: Props) {
   const [pendingChartDelete, setPendingChartDelete] = useState<{ id: string; label: string } | null>(
     null
   );
+  const [pendingImport, setPendingImport] = useState<{ data: LocalData; name: string } | null>(null);
+  const fileInput = useRef<HTMLInputElement>(null);
+
+  /** Laster ned alt som ligger lagret som én JSON-fil. */
+  async function saveBackup() {
+    try {
+      const url = URL.createObjectURL(
+        new Blob([await exportBackup()], { type: "application/json" })
+      );
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = backupFilename();
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      // Nettleseren trenger adressen litt til etter klikket.
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    }
+  }
+
+  async function pickBackup(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    // Nullstill, ellers gir ikke nettleseren beskjed om samme fil velges igjen.
+    e.target.value = "";
+    if (!file) return;
+    try {
+      setPendingImport({ data: parseBackup(await file.text()), name: file.name });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    }
+  }
+
+  async function confirmImport() {
+    if (!pendingImport) return;
+    const { data } = pendingImport;
+    setPendingImport(null);
+    try {
+      await replaceAll(data);
+      // Klassen som ble vist finnes neppe i kopien, så vi går til forsiden og
+      // leser alt inn på nytt derfra.
+      router.push("/");
+      await reload();
+      onClose();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    }
+  }
 
   async function confirmChartDelete() {
     if (!pendingChartDelete) return;
@@ -329,7 +380,39 @@ export default function Sidebar({ open, onClose, onAbout }: Props) {
         )}
 
         <div className="mt-auto border-t border-border p-2">
-          <button type="button" onClick={onAbout} className={`${ghostButton("sm")} w-full justify-start`}>
+          <h2 className="px-2 pb-1 pt-1 text-xs font-semibold uppercase tracking-wide text-subtle">
+            Sikkerhetskopi
+          </h2>
+          <p className="px-2 pb-1.5 text-xs text-subtle">
+            Alt lagres i denne nettleseren. Lagre en kopi jevnlig — tømmes
+            nettleserdataene, er klassene borte.
+          </p>
+          <button
+            type="button"
+            onClick={saveBackup}
+            className={`${ghostButton("sm")} w-full justify-start`}
+          >
+            Lagre kopi til fil
+          </button>
+          <button
+            type="button"
+            onClick={() => fileInput.current?.click()}
+            className={`${ghostButton("sm")} w-full justify-start`}
+          >
+            Hent inn fra fil …
+          </button>
+          <input
+            ref={fileInput}
+            type="file"
+            accept="application/json,.json"
+            onChange={pickBackup}
+            className="hidden"
+          />
+          <button
+            type="button"
+            onClick={onAbout}
+            className={`${ghostButton("sm")} mt-1 w-full justify-start border-t border-border pt-2`}
+          >
             Om Klassekart
           </button>
         </div>
@@ -359,6 +442,23 @@ export default function Sidebar({ open, onClose, onAbout }: Props) {
           confirmLabel="Slett kartet"
           onConfirm={confirmChartDelete}
           onCancel={() => setPendingChartDelete(null)}
+        />
+      )}
+
+      {pendingImport && (
+        <ConfirmDialog
+          title="Hente inn denne sikkerhetskopien?"
+          body={
+            <>
+              <strong className="text-foreground">{pendingImport.name}</strong> inneholder{" "}
+              {plural(pendingImport.data.classes.length, "klasse", "klasser")} og{" "}
+              {plural(pendingImport.data.students.length, "elev", "elever")}. Alt som ligger i
+              nettleseren nå blir erstattet. Vil du beholde det, lagrer du en kopi av det først.
+            </>
+          }
+          confirmLabel="Hent inn"
+          onConfirm={confirmImport}
+          onCancel={() => setPendingImport(null)}
         />
       )}
 
