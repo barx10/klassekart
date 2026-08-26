@@ -1,12 +1,13 @@
 "use client";
 
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   DESK_HEADER_HEIGHT,
   MAX_SEATS,
   MIN_SEATS,
   SEAT_GAP,
   alignDesks,
+  canDistribute,
   canvasSize,
   clampSeats,
   deskHeight,
@@ -173,7 +174,6 @@ export default function ClassroomCanvas({
   onMoveStudent,
   onToggleLock,
 }: Props) {
-  const viewportRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLDivElement>(null);
   const [deskDrag, setDeskDrag] = useState<DeskDrag | null>(null);
   const [deskResize, setDeskResize] = useState<DeskResize | null>(null);
@@ -236,15 +236,25 @@ export default function ClassroomCanvas({
   const [viewportWidth, setViewportWidth] = useState(0);
   const [manualZoom, setManualZoom] = useState<number | null>(null);
 
-  useLayoutEffect(() => {
-    const el = viewportRef.current;
+  /**
+   * Måler bredden klasserommet har å boltre seg på.
+   *
+   * Dette er en callback-ref og ikke en effekt med tom avhengighetsliste:
+   * viewporten finnes ikke i det hele tatt når rommet er tomt for pulter, og
+   * en slik effekt ville aldri festet seg til elementet når den første pulten
+   * kom. Da ble «Tilpass» stående på 100 % — og et bredt klasserom klippet av
+   * — helt til sida ble lastet på nytt.
+   */
+  const observer = useRef<ResizeObserver | null>(null);
+  const measureViewport = useCallback((el: HTMLDivElement | null) => {
+    observer.current?.disconnect();
+    observer.current = null;
     if (!el) return;
-    const observer = new ResizeObserver(([entry]) => {
-      setViewportWidth(entry.contentRect.width);
-    });
-    observer.observe(el);
+
+    const next = new ResizeObserver(([entry]) => setViewportWidth(entry.contentRect.width));
+    next.observe(el);
+    observer.current = next;
     setViewportWidth(el.clientWidth);
-    return () => observer.disconnect();
   }, []);
 
   /**
@@ -613,16 +623,16 @@ export default function ClassroomCanvas({
               <span className="h-4 w-px bg-border" aria-hidden />
               <button
                 type="button"
-                onClick={() => onDesksChange(alignDesks(desks, selected, "top"), true)}
-                title="Gi pultene samme overkant, så de står på rekke"
+                onClick={() => onDesksChange(alignDesks(desks, selected, "row"), true)}
+                title="Legg pultene på samme linje, rad for rad"
                 className="rounded px-2 py-0.5 text-xs font-medium hover:bg-surface-raised"
               >
                 På rekke
               </button>
               <button
                 type="button"
-                onClick={() => onDesksChange(alignDesks(desks, selected, "left"), true)}
-                title="Gi pultene samme venstrekant, så de står i kolonne"
+                onClick={() => onDesksChange(alignDesks(desks, selected, "column"), true)}
+                title="Legg pultene på samme linje, kolonne for kolonne"
                 className="rounded px-2 py-0.5 text-xs font-medium hover:bg-surface-raised"
               >
                 I kolonne
@@ -632,8 +642,8 @@ export default function ClassroomCanvas({
                 onClick={() =>
                   onDesksChange(distributeDesks(desks, selected, spreadAxis(desks, selected)), true)
                 }
-                disabled={selectedDesks.length < 3}
-                title="Lik avstand mellom pultene, med den første og den siste i ro"
+                disabled={!canDistribute(desks, selected, spreadAxis(desks, selected))}
+                title="Lik avstand mellom pultene i hver rad, med den første og den siste i ro"
                 className="rounded px-2 py-0.5 text-xs font-medium hover:bg-surface-raised disabled:opacity-40"
               >
                 Jevn avstand
@@ -747,7 +757,7 @@ export default function ClassroomCanvas({
           Ingen pulter ennå. Bruk knappene over for å legge til rader, kolonner eller enkeltpulter.
         </p>
       ) : (
-        <div ref={viewportRef} data-print-area className="overflow-x-auto">
+        <div ref={measureViewport} data-print-area className="overflow-x-auto">
           {/* Ytre boks tar den skalerte plassen, så sida flyter riktig rundt. */}
           <div
             className="relative mx-auto"
