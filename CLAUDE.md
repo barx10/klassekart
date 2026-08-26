@@ -56,7 +56,7 @@ src/
     HelpTip.tsx                 Spørsmålstegn som forklarer noe ved siden av seg
   lib/
     app-data.tsx                All delt tilstand (se under)
-    classroom.ts                Pult-geometri: bredde/høyde, rutenett, rydd opp
+    classroom.ts                Pult-geometri, merking av flere pulter, låser
     seating.ts                  Fordelingsalgoritmen (simulert herding)
     api.ts                      Datalaget: klasser, elever, kart, par
     local-db.ts                 Lagring i nettleseren (IndexedDB) + sikkerhetskopi
@@ -98,6 +98,38 @@ To ting som lett brekker igjen:
 - **En sluppet pult flyttes bakerst i lista** så den tegnes øverst. Ellers
   blir den liggende skjult under pulten den ble dratt oppå.
 
+#### Flere merkede pulter
+
+Læreren kan merke flere bord — shift-klikk på topplinja, eller en ramme dratt
+over tomt lerret — og rette dem inn samlet med `alignDesks` og
+`distributeDesks`. Det er til for rekker: å dra seks bord på linje for hånd er
+et pirkearbeid ingen orker.
+
+- **Verktøylinja for flere merkede ligger over lerretet**, ikke under utvalget.
+  Sentrert under en rekke ute ved kanten ville den blitt klippet av
+  rullefeltet, og der er det ingen `TOOLBAR_ROOM` å reservere.
+- **Draget regnes fra der pultene sto da det startet** (`moveDesksFrom`), ikke
+  fra forrige bilde. Ellers samler avrundingen seg opp og pultene sklir fra
+  hverandre mens de dras.
+- **Avstanden i `distributeDesks` måles mellom pultkantene**, ikke mellom
+  midtpunktene. Klassene sitter i læringspar og treerbord om hverandre, og med
+  midtpunkter ville en rekke med begge deler sett skjev ut.
+
+#### Låste plasser
+
+Hengelåsen ved et elevnavn låser eleven til setet: `class.locked_seats` er
+`{ elevId: { desk_id, index } }`. Låsen hører til klasserommet og ikke til
+kartet — det er hele poenget, den skal overleve neste generering.
+
+`generateSeatingChart` tar imot de låste som `pinned` og setter dem ved pulten
+sin *før* herdingen, og holder dem utenfor byttene. En straff i kostfunksjonen
+ville bare gjort det dyrt å flytte dem, ikke umulig.
+
+Låsene peker på pulter og seter som kan forsvinne. `validLocks` kaster dem som
+ikke lenger stemmer, og `applyDesks` skriver låser og pulter i **samme**
+endring — ellers ville en lås til en fjernet pult blitt liggende usynlig og
+holdt eleven utenfor fordelingen for godt.
+
 ### Klassekart og historikk
 
 `seating_charts.layout` er `{ pultId: [elevId | null, ...] }` — én plass per
@@ -133,6 +165,9 @@ hjemme inne i `desks`; `normalizeDesks()` fyller inn standardverdier.
 Versjon 2 la til `contact_teachers`. En kopi fra versjon 1 har ikke feltet, og
 da bygges lista av navnene som står på elevene og klassene — det er alt vi vet
 om hvem lærerne er.
+
+Versjon 3 la til `locked_seats` på klassene. Eldre kopier mangler feltet, og
+leses som «ingen låser».
 
 **Sikkerhetskopien er hele datasettet, ikke én klasse.** Derfor står det ikke
 noe klassenavn i filnavnet, og derfor erstatter `replaceAll()` alt ved import.

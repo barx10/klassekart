@@ -1,7 +1,7 @@
 "use client";
 
 import { mutate, newId, read, teacherKey, type LocalData } from "./local-db";
-import { ensureCapacity, makeGrid } from "./classroom";
+import { clampSeats, ensureCapacity, makeGrid, validLocks } from "./classroom";
 import { buildHistoryMap, countNewPairs, generateSeatingChart, pairsFromGroups } from "./seating";
 import type {
   ContactTeacher,
@@ -11,6 +11,7 @@ import type {
   PairHistoryRow,
   SchoolClass,
   SeatingChart,
+  SeatLocks,
   Student,
 } from "./types";
 
@@ -86,6 +87,7 @@ export async function createClass(name: string, defaultContactTeacher?: string):
       // Nye klasser starter med et ryddig klasserom læreren kan dra om på.
       desks: makeGrid(3, 3),
       desk_cols: 3,
+      locked_seats: {},
       created_at: new Date().toISOString(),
     };
     data.classes.push(created);
@@ -111,12 +113,31 @@ export async function updateDefaultContactTeacher(id: string, name: string | nul
   });
 }
 
-/** Lagrer klasserommets pultoppsett (posisjoner + rutenettbredde). */
-export async function updateDesks(id: string, desks: Desk[], deskCols: number): Promise<SchoolClass> {
+/**
+ * Lagrer klasserommets pultoppsett (posisjoner + rutenettbredde), og låsene i
+ * samme skriv. Låsene peker på pulter og seter, så de kan ikke lagres for seg:
+ * fjerner læreren en pult, må låsen til den forsvinne samtidig.
+ */
+export async function updateDesks(
+  id: string,
+  desks: Desk[],
+  deskCols: number,
+  lockedSeats: SeatLocks
+): Promise<SchoolClass> {
   return mutate((data) => {
     const found = requireClass(data, id);
     found.desks = desks;
     found.desk_cols = deskCols;
+    found.locked_seats = lockedSeats;
+    return found;
+  });
+}
+
+/** Lagrer hvilke elever som er låst til hvilket sete. */
+export async function updateLocks(id: string, lockedSeats: SeatLocks): Promise<SchoolClass> {
+  return mutate((data) => {
+    const found = requireClass(data, id);
+    found.locked_seats = lockedSeats;
     return found;
   });
 }
@@ -167,11 +188,14 @@ export async function updateStudent(
   });
 }
 
-/** Sletter eleven og par-radene eleven inngår i. */
+/** Sletter eleven, par-radene eleven inngår i, og en eventuell låst plass. */
 export async function deleteStudent(id: string): Promise<void> {
   await mutate((data) => {
     data.students = data.students.filter((s) => s.id !== id);
     data.pairs = data.pairs.filter((p) => p.student_a_id !== id && p.student_b_id !== id);
+    for (const found of data.classes) {
+      if (found.locked_seats?.[id]) delete found.locked_seats[id];
+    }
   });
 }
 
@@ -349,14 +373,54 @@ export async function generateAndSaveChart(
     // forsvant fra klassekartet samtidig som parene deres ble ført i historikken.
     const roomyDesks = ensureCapacity(desks, students.length, deskCols);
 
+    // Låser til pulter eller seter som ikke finnes lenger hoppes over, slik at
+    // eleven blir med i den vanlige fordelingen i stedet for å bli borte.
+    const found = requireClass(data, classId);
+    const locks = validLocks(
+      found.locked_seats,
+      roomyDesks,
+      new Set(students.map((s) => s.id))
+    );
+    const deskIndexById = new Map(roomyDesks.map((d, i) => [d.id, i]));
+    const pinned = new Map<string, number>();
+    for (const [studentId, lock] of Object.entries(locks)) {
+      const index = deskIndexById.get(lock.desk_id);
+      if (index !== undefined) pinned.set(studentId, index);
+    }
+
     const historyMap = buildHistoryMap(data.pairs.filter((p) => p.class_id === classId));
-    const groups = generateSeatingChart(students, roomyDesks.map((d) => d.seats), historyMap);
+    const groups = generateSeatingChart(
+      students,
+      roomyDesks.map((d) => d.seats),
+      historyMap,
+      pinned
+    );
     const { newPairs, totalPairs } = countNewPairs(groups, historyMap);
 
+    // Låste elever settes på nøyaktig det setet de er låst til; resten fyller
+    // setene som er igjen ved samme pult.
     const layout: DeskAssignments = {};
     groups.forEach((group, i) => {
       const desk = roomyDesks[i];
-      if (desk && group.length > 0) layout[desk.id] = group;
+      if (!desk || group.length === 0) return;
+
+      const seats: (string | null)[] = Array.from({ length: clampSeats(desk.seats) }, () => null);
+      const rest: string[] = [];
+      for (const studentId of group) {
+        const lock = locks[studentId];
+        if (lock && lock.desk_id === desk.id && seats[lock.index] === null) {
+          seats[lock.index] = studentId;
+        } else {
+          rest.push(studentId);
+        }
+      }
+      let next = 0;
+      for (const studentId of rest) {
+        while (next < seats.length && seats[next] !== null) next++;
+        if (next >= seats.length) break;
+        seats[next] = studentId;
+      }
+      layout[desk.id] = seats;
     });
 
     const now = new Date().toISOString();
@@ -367,7 +431,6 @@ export async function generateAndSaveChart(
     bumpPairs(data, classId, pairsFromGroups(groups), 1, now);
 
     if (roomyDesks !== desks) {
-      const found = requireClass(data, classId);
       found.desks = roomyDesks;
       found.desk_cols = deskCols;
     }

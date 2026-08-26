@@ -1,20 +1,27 @@
 "use client";
 
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import {
   DESK_HEADER_HEIGHT,
   MAX_SEATS,
   MIN_SEATS,
   SEAT_GAP,
+  alignDesks,
   canvasSize,
   clampSeats,
   deskHeight,
   deskWidth,
+  desksInRect,
+  distributeDesks,
+  moveDesksFrom,
+  nudgeDesks,
   seatGrid,
+  spreadAxis,
+  type Rect,
 } from "@/lib/classroom";
 import { genderDotClass, genderName } from "@/lib/gender";
-import type { Desk, DeskAssignments, Student } from "@/lib/types";
-import { inputClassSm } from "@/lib/ui";
+import type { Desk, DeskAssignments, SeatLocks, Student } from "@/lib/types";
+import { inputClassSm, plural } from "@/lib/ui";
 
 interface SeatRef {
   deskId: string;
@@ -25,21 +32,30 @@ interface Props {
   desks: Desk[];
   assignments: DeskAssignments;
   studentsById: Map<string, Student>;
-  /** Kalles mens en pult dras (persist=false) og når den slippes (persist=true). */
+  /** Elever som er låst til et sete, med elev-id som nøkkel. */
+  locks: SeatLocks;
+  /** Kalles mens pulter dras (persist=false) og når de slippes (persist=true). */
   onDesksChange: (desks: Desk[], persist: boolean) => void;
-  onRemoveDesk: (deskId: string) => void;
-  onSeatsChange: (deskId: string, seats: number) => void;
+  onRemoveDesks: (deskIds: string[]) => void;
+  /** Endrer antall plasser med ett steg, på alle pultene i utvalget. */
+  onSeatsChange: (deskIds: string[], delta: number) => void;
   onRenameDesk: (deskId: string, name: string) => void;
   onResizeDesk: (deskId: string, w: number, h: number, persist: boolean) => void;
   onResetDeskSize: (deskId: string) => void;
   onMoveStudent: (from: SeatRef, to: SeatRef) => void;
+  onToggleLock: (studentId: string, seat: SeatRef) => void;
 }
 
 interface DeskDrag {
+  /** Pulten det ble tatt tak i — den avgjør hva et klikk uten bevegelse gjør. */
   deskId: string;
-  offsetX: number;
-  offsetY: number;
+  /** Hvor pultene som dras sto da draget startet. */
+  origins: Record<string, { x: number; y: number }>;
+  startX: number;
+  startY: number;
   moved: boolean;
+  /** Om pulten var den eneste merkede da draget startet. */
+  wasOnly: boolean;
 }
 
 interface DeskResize {
@@ -58,9 +74,25 @@ interface StudentDrag {
   over: SeatRef | null;
 }
 
-/** Hvor mange piksler pilene flytter en valgt pult. Shift gir grovere steg. */
+/** Ramma læreren drar over lerretet for å merke flere pulter. */
+interface Marquee {
+  startX: number;
+  startY: number;
+  x: number;
+  y: number;
+  /** Shift beholder det som alt er merket. */
+  add: boolean;
+}
+
+/** Hvor mange piksler pilene flytter merkede pulter. Shift gir grovere steg. */
 const NUDGE = 8;
 const NUDGE_LARGE = 32;
+
+/**
+ * Hvor langt markøren må flyttes før det telles som et drag og ikke et klikk.
+ * Uten den ville en skjelven hånd på klikket gjort at pulten ikke ble merket.
+ */
+const DRAG_THRESHOLD = 3;
 
 const MIN_ZOOM = 0.2;
 const MAX_ZOOM = 2;
@@ -85,6 +117,15 @@ function lastName(name: string): string {
   return name.split(" ").slice(1).join(" ");
 }
 
+function marqueeRect(m: Marquee): Rect {
+  return {
+    x: Math.min(m.startX, m.x),
+    y: Math.min(m.startY, m.y),
+    width: Math.abs(m.x - m.startX),
+    height: Math.abs(m.y - m.startY),
+  };
+}
+
 /** Finner setet under markøren. Ghost-elementet har pointer-events: none. */
 function seatAtPoint(x: number, y: number): SeatRef | null {
   const el = document.elementFromPoint(x, y);
@@ -94,29 +135,65 @@ function seatAtPoint(x: number, y: number): SeatRef | null {
   return { deskId, index: Number(index) };
 }
 
+/** Hengelåsen på et elevnavn: lukket når plassen er låst, åpen ellers. */
+function LockIcon({ locked }: { locked: boolean }) {
+  return (
+    <svg
+      viewBox="0 0 16 16"
+      className="h-3 w-3"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.5"
+      aria-hidden
+    >
+      <rect x="3.5" y="7" width="9" height="6" rx="1.5" />
+      <path
+        d={locked ? "M5.6 7V4.9a2.4 2.4 0 0 1 4.8 0V7" : "M5.6 7V4.9a2.4 2.4 0 0 1 4.7-.7"}
+        strokeLinecap="round"
+      />
+    </svg>
+  );
+}
+
 export default function ClassroomCanvas({
   desks,
   assignments,
   studentsById,
+  locks,
   onDesksChange,
-  onRemoveDesk,
+  onRemoveDesks,
   onSeatsChange,
   onRenameDesk,
   onResizeDesk,
   onResetDeskSize,
   onMoveStudent,
+  onToggleLock,
 }: Props) {
   const viewportRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLDivElement>(null);
   const [deskDrag, setDeskDrag] = useState<DeskDrag | null>(null);
   const [deskResize, setDeskResize] = useState<DeskResize | null>(null);
   const [studentDrag, setStudentDrag] = useState<StudentDrag | null>(null);
-  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [marquee, setMarquee] = useState<Marquee | null>(null);
+  /**
+   * Merkede pulter. Flere om gangen, slik at en hel rekke kan rettes inn i én
+   * operasjon i stedet for å dras på plass én og én.
+   */
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
   /** Setet som er «løftet» med tastatur, i påvente av et sete å bytte med. */
   const [picked, setPicked] = useState<SeatRef | null>(null);
   const [announcement, setAnnouncement] = useState("");
 
   const { width, height } = canvasSize(desks);
+
+  const selected = useMemo(() => new Set(selectedIds), [selectedIds]);
+  // Merkede pulter som fortsatt finnes. Fjernes en pult, faller den ut av
+  // utvalget av seg selv, uten en effekt som rydder i tilstanden.
+  const selectedDesks = useMemo(
+    () => desks.filter((d) => selected.has(d.id)),
+    [desks, selected]
+  );
+  const many = selectedDesks.length > 1;
 
   // --- Zoom ----------------------------------------------------------------
   // Klasserommet er ofte bredere enn skjermen. Før måtte du dra i et rullefelt
@@ -159,20 +236,25 @@ export default function ClassroomCanvas({
   const deskLabel = (desk: Desk) =>
     desk.name || `Pult ${desks.findIndex((d) => d.id === desk.id) + 1}`;
 
-  // Escape avbryter både valgt pult og et løftet elevnavn.
+  const toggleSelected = (deskId: string) =>
+    setSelectedIds((prev) =>
+      prev.includes(deskId) ? prev.filter((id) => id !== deskId) : [...prev, deskId]
+    );
+
+  // Escape avbryter både merkingen og et løftet elevnavn.
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
       if (e.key !== "Escape") return;
       if (picked) {
         setPicked(null);
         setAnnouncement("Avbrutt.");
-      } else if (selectedId) {
-        setSelectedId(null);
+      } else if (selectedIds.length > 0) {
+        setSelectedIds([]);
       }
     }
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
-  }, [picked, selectedId]);
+  }, [picked, selectedIds]);
 
   // --- Flytting av pulter (draghåndtaket er topplinja) ---------------------
 
@@ -181,11 +263,30 @@ export default function ClassroomCanvas({
     const point = toCanvas(e.clientX, e.clientY);
     if (!point) return;
     e.currentTarget.setPointerCapture(e.pointerId);
+
+    // Shift (eller Ctrl/Cmd) legger pulten til utvalget i stedet for å dra den.
+    if (e.shiftKey || e.metaKey || e.ctrlKey) {
+      toggleSelected(desk.id);
+      return;
+    }
+
+    // Tar du tak i en pult som ikke er merket, blir den utvalget. Er den
+    // allerede med, følger resten av utvalget med på draget.
+    const dragIds = selected.has(desk.id) ? selectedIds : [desk.id];
+    if (!selected.has(desk.id)) setSelectedIds([desk.id]);
+
+    const origins: Record<string, { x: number; y: number }> = {};
+    for (const d of desks) {
+      if (dragIds.includes(d.id)) origins[d.id] = { x: d.x, y: d.y };
+    }
+
     setDeskDrag({
       deskId: desk.id,
-      offsetX: point.x - desk.x,
-      offsetY: point.y - desk.y,
+      origins,
+      startX: point.x,
+      startY: point.y,
       moved: false,
+      wasOnly: selectedIds.length === 1 && selectedIds[0] === desk.id,
     });
   }
 
@@ -193,37 +294,39 @@ export default function ClassroomCanvas({
     if (!deskDrag) return;
     const point = toCanvas(e.clientX, e.clientY);
     if (!point) return;
-    const x = Math.max(0, point.x - deskDrag.offsetX);
-    const y = Math.max(0, point.y - deskDrag.offsetY);
-    if (!deskDrag.moved) setDeskDrag({ ...deskDrag, moved: true });
-    onDesksChange(
-      desks.map((d) => (d.id === deskDrag.deskId ? { ...d, x, y } : d)),
-      false
-    );
+    const dx = point.x - deskDrag.startX;
+    const dy = point.y - deskDrag.startY;
+    if (!deskDrag.moved) {
+      if (Math.abs(dx) < DRAG_THRESHOLD && Math.abs(dy) < DRAG_THRESHOLD) return;
+      setDeskDrag({ ...deskDrag, moved: true });
+    }
+    onDesksChange(moveDesksFrom(desks, deskDrag.origins, dx, dy), false);
   }
 
   function handleHeaderPointerUp(e: React.PointerEvent) {
     if (!deskDrag) return;
     e.currentTarget.releasePointerCapture(e.pointerId);
-    // Et klikk uten bevegelse velger pulten i stedet for å flytte den.
+
+    // Et klikk uten bevegelse merker pulten alene, eller opphever merkingen.
     if (!deskDrag.moved) {
-      setSelectedId((prev) => (prev === deskDrag.deskId ? null : deskDrag.deskId));
+      setSelectedIds(deskDrag.wasOnly ? [] : [deskDrag.deskId]);
       setDeskDrag(null);
       return;
     }
-    // Flytt pulten bakerst i lista slik at den tegnes øverst — ellers kan en
-    // pult bli liggende skjult under en den er dratt oppå.
-    const moved = desks.find((d) => d.id === deskDrag.deskId);
-    const reordered = moved ? [...desks.filter((d) => d.id !== deskDrag.deskId), moved] : desks;
+    // Flytt de dratte pultene bakerst i lista slik at de tegnes øverst — ellers
+    // kan en pult bli liggende skjult under en den er dratt oppå.
+    const dragged = desks.filter((d) => deskDrag.origins[d.id]);
+    const rest = desks.filter((d) => !deskDrag.origins[d.id]);
     setDeskDrag(null);
-    onDesksChange(reordered, true);
+    onDesksChange([...rest, ...dragged], true);
   }
 
-  /** Pilene flytter en valgt pult, så oppsettet også kan endres med tastatur. */
+  /** Pilene flytter de merkede pultene, så oppsettet kan endres med tastatur. */
   function handleHeaderKeyDown(e: React.KeyboardEvent, desk: Desk) {
     if (e.key === " " || e.key === "Enter") {
       e.preventDefault();
-      setSelectedId((prev) => (prev === desk.id ? null : desk.id));
+      if (e.shiftKey) toggleSelected(desk.id);
+      else setSelectedIds(isOnlySelected(desk.id) ? [] : [desk.id]);
       return;
     }
     const step = e.shiftKey ? NUDGE_LARGE : NUDGE;
@@ -236,14 +339,46 @@ export default function ClassroomCanvas({
     const move = delta[e.key];
     if (!move) return;
     e.preventDefault();
-    onDesksChange(
-      desks.map((d) =>
-        d.id === desk.id
-          ? { ...d, x: Math.max(0, d.x + move[0]), y: Math.max(0, d.y + move[1]) }
-          : d
-      ),
-      true
-    );
+    const ids = selected.has(desk.id) ? selected : new Set([desk.id]);
+    onDesksChange(nudgeDesks(desks, ids, move[0], move[1]), true);
+  }
+
+  function isOnlySelected(deskId: string): boolean {
+    return selectedIds.length === 1 && selectedIds[0] === deskId;
+  }
+
+  // --- Merke flere pulter med en ramme over lerretet -----------------------
+
+  function handleCanvasPointerDown(e: React.PointerEvent) {
+    // Bare tomt lerret starter en ramme; pultene har sine egne håndtak.
+    if (e.target !== e.currentTarget) return;
+    if (e.pointerType === "mouse" && e.button !== 0) return;
+    const point = toCanvas(e.clientX, e.clientY);
+    if (!point) return;
+    e.currentTarget.setPointerCapture(e.pointerId);
+    setMarquee({ startX: point.x, startY: point.y, x: point.x, y: point.y, add: e.shiftKey });
+  }
+
+  function handleCanvasPointerMove(e: React.PointerEvent) {
+    if (!marquee) return;
+    const point = toCanvas(e.clientX, e.clientY);
+    if (!point) return;
+    setMarquee({ ...marquee, x: point.x, y: point.y });
+  }
+
+  function handleCanvasPointerUp(e: React.PointerEvent) {
+    if (!marquee) return;
+    e.currentTarget.releasePointerCapture(e.pointerId);
+    const rect = marqueeRect(marquee);
+    setMarquee(null);
+
+    // En ramme uten størrelse er et klikk på tomt lerret: opphev merkingen.
+    if (rect.width < DRAG_THRESHOLD && rect.height < DRAG_THRESHOLD) {
+      if (!marquee.add) setSelectedIds([]);
+      return;
+    }
+    const hit = desksInRect(desks, rect);
+    setSelectedIds(marquee.add ? [...new Set([...selectedIds, ...hit])] : hit);
   }
 
   // --- Endre størrelse på en pult (håndtaket nede til høyre) ---------------
@@ -251,7 +386,7 @@ export default function ClassroomCanvas({
   function handleResizePointerDown(e: React.PointerEvent, desk: Desk) {
     e.stopPropagation();
     e.currentTarget.setPointerCapture(e.pointerId);
-    setSelectedId(desk.id);
+    setSelectedIds([desk.id]);
     setDeskResize({
       deskId: desk.id,
       startX: e.clientX,
@@ -330,6 +465,12 @@ export default function ClassroomCanvas({
     if (e.key !== "Enter" && e.key !== " ") return;
     e.preventDefault();
 
+    // En låst elev står i ro, og kan heller ikke dyttes vekk av en annen.
+    if (student && locks[student.id]) {
+      setAnnouncement(`${student.name} har låst plass. Lås opp for å flytte.`);
+      return;
+    }
+
     if (!picked) {
       if (!student) return;
       setPicked(seat);
@@ -357,57 +498,156 @@ export default function ClassroomCanvas({
     );
   }
 
+  function toggleLock(seat: SeatRef, student: Student) {
+    const locked = Boolean(locks[student.id]);
+    onToggleLock(student.id, seat);
+    setAnnouncement(
+      locked
+        ? `${student.name} kan flyttes igjen.`
+        : `${student.name} er låst til plassen sin.`
+    );
+  }
+
+  // --- Handlinger på flere pulter -----------------------------------------
+
+  const canShrink = selectedDesks.some((d) => clampSeats(d.seats) > MIN_SEATS);
+  const canGrow = selectedDesks.some((d) => clampSeats(d.seats) < MAX_SEATS);
+
   const draggedStudent = studentDrag ? studentsById.get(studentDrag.studentId) : undefined;
+  const band = marquee ? marqueeRect(marquee) : null;
 
   return (
     <div
       data-print-area
       className="rounded-2xl border border-border bg-background p-4 sm:p-6"
       onPointerDown={(e) => {
-        // Klikk på tomt lerret opphever valget, slik at verktøylinja forsvinner.
-        if (e.target === e.currentTarget) setSelectedId(null);
+        // Klikk på tomt lerret opphever merkingen, slik at verktøylinja forsvinner.
+        if (e.target === e.currentTarget) setSelectedIds([]);
       }}
     >
       {desks.length > 0 && (
-        <div data-print-hide className="mb-2 flex items-center justify-end gap-1">
-          <button
-            type="button"
-            onClick={() => setManualZoom(null)}
-            aria-pressed={isFitted}
-            title="Vis hele klasserommet"
-            className={`rounded-md border px-2 py-1 text-xs font-medium ${
-              isFitted
-                ? "border-accent bg-accent-soft text-accent-text"
-                : "border-border bg-surface-raised text-muted hover:text-foreground"
-            }`}
-          >
-            Tilpass
-          </button>
-          <div className="flex items-center overflow-hidden rounded-md border border-border bg-surface-raised">
+        <div data-print-hide className="mb-2 flex flex-wrap items-center justify-between gap-2">
+          {/* Verktøylinja for flere merkede pulter ligger her og ikke under dem:
+              sentrert under utvalget ville den blitt klippet av rullefeltet så
+              snart utvalget lå ute mot kanten av rommet. */}
+          {many ? (
+            <div className="flex flex-wrap items-center gap-1 rounded-lg border border-accent bg-accent-soft px-1.5 py-1 text-accent-text">
+              <span className="px-1 text-xs font-medium">
+                {plural(selectedDesks.length, "pult", "pulter")} merket
+              </span>
+              <span className="h-4 w-px bg-border" aria-hidden />
+              <button
+                type="button"
+                onClick={() => onDesksChange(alignDesks(desks, selected, "top"), true)}
+                title="Gi pultene samme overkant, så de står på rekke"
+                className="rounded px-2 py-0.5 text-xs font-medium hover:bg-surface-raised"
+              >
+                På rekke
+              </button>
+              <button
+                type="button"
+                onClick={() => onDesksChange(alignDesks(desks, selected, "left"), true)}
+                title="Gi pultene samme venstrekant, så de står i kolonne"
+                className="rounded px-2 py-0.5 text-xs font-medium hover:bg-surface-raised"
+              >
+                I kolonne
+              </button>
+              <button
+                type="button"
+                onClick={() =>
+                  onDesksChange(distributeDesks(desks, selected, spreadAxis(desks, selected)), true)
+                }
+                disabled={selectedDesks.length < 3}
+                title="Lik avstand mellom pultene, med den første og den siste i ro"
+                className="rounded px-2 py-0.5 text-xs font-medium hover:bg-surface-raised disabled:opacity-40"
+              >
+                Jevn avstand
+              </button>
+              <span className="h-4 w-px bg-border" aria-hidden />
+              <button
+                type="button"
+                onClick={() => onSeatsChange(selectedIds, -1)}
+                disabled={!canShrink}
+                aria-label="Færre plasser ved de merkede pultene"
+                className="rounded px-1.5 py-0.5 text-sm hover:bg-surface-raised disabled:opacity-40"
+              >
+                −
+              </button>
+              <span className="text-[11px]">plasser</span>
+              <button
+                type="button"
+                onClick={() => onSeatsChange(selectedIds, 1)}
+                disabled={!canGrow}
+                aria-label="Flere plasser ved de merkede pultene"
+                className="rounded px-1.5 py-0.5 text-sm hover:bg-surface-raised disabled:opacity-40"
+              >
+                +
+              </button>
+              <span className="h-4 w-px bg-border" aria-hidden />
+              <button
+                type="button"
+                onClick={() => {
+                  onRemoveDesks(selectedIds);
+                  setSelectedIds([]);
+                }}
+                className="rounded px-2 py-0.5 text-xs font-medium hover:bg-surface-raised hover:text-danger"
+              >
+                Fjern
+              </button>
+              <button
+                type="button"
+                onClick={() => setSelectedIds([])}
+                className="rounded px-2 py-0.5 text-xs hover:bg-surface-raised"
+              >
+                Avmerk
+              </button>
+            </div>
+          ) : (
+            <p className="text-xs text-subtle">
+              Dra en ramme rundt en rekke, eller shift-klikk på flere bord, for å rette dem inn.
+            </p>
+          )}
+
+          <div className="flex items-center gap-1">
             <button
               type="button"
-              onClick={() => stepZoom(-ZOOM_STEP)}
-              disabled={zoom <= MIN_ZOOM}
-              aria-label="Zoom ut"
-              className="px-2 py-1 text-muted hover:bg-background hover:text-foreground disabled:opacity-30"
+              onClick={() => setManualZoom(null)}
+              aria-pressed={isFitted}
+              title="Vis hele klasserommet"
+              className={`rounded-md border px-2 py-1 text-xs font-medium ${
+                isFitted
+                  ? "border-accent bg-accent-soft text-accent-text"
+                  : "border-border bg-surface-raised text-muted hover:text-foreground"
+              }`}
             >
-              −
+              Tilpass
             </button>
-            <span
-              aria-live="polite"
-              className="min-w-[3rem] px-1 text-center text-xs tabular-nums text-muted"
-            >
-              {Math.round(zoom * 100)} %
-            </span>
-            <button
-              type="button"
-              onClick={() => stepZoom(ZOOM_STEP)}
-              disabled={zoom >= MAX_ZOOM}
-              aria-label="Zoom inn"
-              className="px-2 py-1 text-muted hover:bg-background hover:text-foreground disabled:opacity-30"
-            >
-              +
-            </button>
+            <div className="flex items-center overflow-hidden rounded-md border border-border bg-surface-raised">
+              <button
+                type="button"
+                onClick={() => stepZoom(-ZOOM_STEP)}
+                disabled={zoom <= MIN_ZOOM}
+                aria-label="Zoom ut"
+                className="px-2 py-1 text-muted hover:bg-background hover:text-foreground disabled:opacity-30"
+              >
+                −
+              </button>
+              <span
+                aria-live="polite"
+                className="min-w-[3rem] px-1 text-center text-xs tabular-nums text-muted"
+              >
+                {Math.round(zoom * 100)} %
+              </span>
+              <button
+                type="button"
+                onClick={() => stepZoom(ZOOM_STEP)}
+                disabled={zoom >= MAX_ZOOM}
+                aria-label="Zoom inn"
+                className="px-2 py-1 text-muted hover:bg-background hover:text-foreground disabled:opacity-30"
+              >
+                +
+              </button>
+            </div>
           </div>
         </div>
       )}
@@ -440,15 +680,28 @@ export default function ClassroomCanvas({
           >
             <div
               ref={canvasRef}
-              className="absolute top-0 left-0 origin-top-left"
+              onPointerDown={handleCanvasPointerDown}
+              onPointerMove={handleCanvasPointerMove}
+              onPointerUp={handleCanvasPointerUp}
+              onPointerCancel={handleCanvasPointerUp}
+              className="absolute top-0 left-0 origin-top-left touch-none"
               style={{ width, height, transform: `scale(${zoom})` }}
             >
+              {band && (
+                <div
+                  data-print-hide
+                  className="pointer-events-none absolute z-40 rounded border border-dashed border-accent bg-accent-soft/40"
+                  style={{ left: band.x, top: band.y, width: band.width, height: band.height }}
+                  aria-hidden
+                />
+              )}
+
               {desks.map((desk) => {
                 const seated = assignments[desk.id] ?? [];
                 const seats = clampSeats(desk.seats);
-                const isDragging = deskDrag?.deskId === desk.id;
+                const isDragging = Boolean(deskDrag?.moved && deskDrag.origins[desk.id]);
                 const isResizing = deskResize?.deskId === desk.id;
-                const isSelected = selectedId === desk.id;
+                const isSelected = selected.has(desk.id);
                 const label = deskLabel(desk);
                 return (
                   <div
@@ -475,9 +728,9 @@ export default function ClassroomCanvas({
                       onPointerUp={handleHeaderPointerUp}
                       onPointerCancel={handleHeaderPointerUp}
                       onKeyDown={(e) => handleHeaderKeyDown(e, desk)}
-                      aria-label={`${label}. Enter velger pulten, piltastene flytter den.`}
+                      aria-label={`${label}. Enter merker pulten, shift+Enter merker flere, piltastene flytter dem.`}
                       aria-pressed={isSelected}
-                      title="Dra for å flytte pulten, klikk for å endre den"
+                      title="Dra for å flytte pulten, klikk for å merke den, shift-klikk for å merke flere"
                       className={`flex w-full touch-none select-none items-center justify-center rounded-t-xl px-2 text-[11px] ${
                         isDragging ? "cursor-grabbing" : "cursor-grab"
                       } ${desk.name ? "font-medium text-muted" : "text-subtle"}`}
@@ -509,68 +762,127 @@ export default function ClassroomCanvas({
 
                         if (!student) {
                           return (
-                            <button
-                              key={i}
-                              type="button"
-                              data-seat={seatKey(seat)}
-                              disabled={!picked}
-                              onKeyDown={(e) => handleSeatKeyDown(e, seat, undefined)}
-                              aria-label={`Ledig sete ${i + 1} ved ${label}`}
-                              className={`flex h-full w-full items-center justify-center rounded-lg border border-dashed text-[11px] disabled:cursor-default disabled:opacity-100 ${
-                                isOver || isTarget
-                                  ? "border-accent bg-accent-soft text-accent-text"
-                                  : "border-border text-subtle"
-                              }`}
-                            >
-                              Ledig
-                            </button>
+                            <span key={i} data-seat={seatKey(seat)} className="block h-full w-full">
+                              <button
+                                type="button"
+                                disabled={!picked}
+                                onKeyDown={(e) => handleSeatKeyDown(e, seat, undefined)}
+                                aria-label={`Ledig sete ${i + 1} ved ${label}`}
+                                className={`flex h-full w-full items-center justify-center rounded-lg border border-dashed text-[11px] disabled:cursor-default disabled:opacity-100 ${
+                                  isOver || isTarget
+                                    ? "border-accent bg-accent-soft text-accent-text"
+                                    : "border-border text-subtle"
+                                }`}
+                              >
+                                Ledig
+                              </button>
+                            </span>
                           );
                         }
 
+                        // Låsen hører til klasserommet: eleven blir stående her
+                        // også når det genereres et nytt klassekart.
+                        const lock = locks[student.id];
+                        const isLocked =
+                          Boolean(lock) && lock.desk_id === desk.id && lock.index === i;
+
                         return (
-                          <button
+                          <span
                             key={i}
-                            type="button"
                             data-seat={seatKey(seat)}
-                            onPointerDown={(e) => handleSeatPointerDown(e, seat, student.id)}
-                            onPointerMove={handleSeatPointerMove}
-                            onPointerUp={handleSeatPointerUp}
-                            onPointerCancel={handleSeatPointerUp}
-                            onKeyDown={(e) => handleSeatKeyDown(e, seat, student)}
-                            aria-label={`${student.name}${
-                              student.gender ? `, ${genderName(student.gender).toLowerCase()}` : ""
-                            }, sete ${i + 1} ved ${label}. Enter for å bytte plass.`}
-                            aria-pressed={Boolean(isPicked)}
-                            title={`${student.name} — dra, eller trykk Enter, for å bytte plass`}
-                            className={`flex h-full w-full cursor-grab touch-none select-none items-center gap-1.5 overflow-hidden rounded-lg border px-2 text-left ${
-                              isOver || isPicked
-                                ? "border-accent bg-accent-soft"
-                                : isSource
-                                  ? "border-dashed border-accent/60 bg-surface opacity-50"
-                                  : isTarget
-                                    ? "border-accent/40 bg-surface"
-                                    : "border-border bg-surface"
-                            }`}
+                            className="relative block h-full w-full min-w-0"
                           >
-                            {student.gender && (
-                              <span
-                                className={`h-2 w-2 shrink-0 rounded-full ${genderDotClass(
-                                  student.gender
-                                )}`}
-                                aria-hidden
-                              />
-                            )}
-                            <span className="min-w-0 flex-1 leading-tight">
-                              <span className="block truncate text-[13px] font-medium">
-                                {firstName(student.name)}
-                              </span>
-                              {lastName(student.name) && (
-                                <span className="block truncate text-[11px] text-subtle">
-                                  {lastName(student.name)}
-                                </span>
+                            <button
+                              type="button"
+                              onPointerDown={
+                                isLocked
+                                  ? undefined
+                                  : (e) => handleSeatPointerDown(e, seat, student.id)
+                              }
+                              onPointerMove={isLocked ? undefined : handleSeatPointerMove}
+                              onPointerUp={isLocked ? undefined : handleSeatPointerUp}
+                              onPointerCancel={isLocked ? undefined : handleSeatPointerUp}
+                              onKeyDown={(e) => handleSeatKeyDown(e, seat, student)}
+                              aria-label={`${student.name}${
+                                student.gender ? `, ${genderName(student.gender).toLowerCase()}` : ""
+                              }, sete ${i + 1} ved ${label}.${
+                                isLocked ? " Låst plass." : " Enter for å bytte plass."
+                              }`}
+                              aria-pressed={Boolean(isPicked)}
+                              title={
+                                isLocked
+                                  ? `${student.name} har låst plass`
+                                  : `${student.name} — dra, eller trykk Enter, for å bytte plass`
+                              }
+                              className={`flex h-full w-full touch-none select-none items-center gap-1.5 overflow-hidden rounded-lg border px-2 text-left ${
+                                isLocked ? "cursor-default pr-5" : "cursor-grab"
+                              } ${
+                                isOver || isPicked
+                                  ? "border-accent bg-accent-soft"
+                                  : isSource
+                                    ? "border-dashed border-accent/60 bg-surface opacity-50"
+                                    : isLocked
+                                      ? "border-accent/50 bg-surface"
+                                      : isTarget
+                                        ? "border-accent/40 bg-surface"
+                                        : "border-border bg-surface"
+                              }`}
+                            >
+                              {student.gender && (
+                                <span
+                                  className={`h-2 w-2 shrink-0 rounded-full ${genderDotClass(
+                                    student.gender
+                                  )}`}
+                                  aria-hidden
+                                />
                               )}
-                            </span>
-                          </button>
+                              <span className="min-w-0 flex-1 leading-tight">
+                                <span className="block truncate text-[13px] font-medium">
+                                  {firstName(student.name)}
+                                </span>
+                                {lastName(student.name) && (
+                                  <span className="block truncate text-[11px] text-subtle">
+                                    {lastName(student.name)}
+                                  </span>
+                                )}
+                              </span>
+                            </button>
+
+                            {/* Hengelåsen ligger utenfor seteknappen, ikke inni:
+                                en knapp inni en knapp er ugyldig, og setet er
+                                selv draghåndtaket for elevnavnet. */}
+                            <button
+                              type="button"
+                              data-no-drag
+                              data-print-hide
+                              onClick={() => toggleLock(seat, student)}
+                              aria-pressed={isLocked}
+                              aria-label={
+                                isLocked
+                                  ? `Lås opp plassen til ${student.name}`
+                                  : `Lås ${student.name} til denne plassen`
+                              }
+                              title={
+                                isLocked
+                                  ? "Låst plass — eleven blir stående når du genererer nytt kart"
+                                  : "Lås eleven til denne plassen"
+                              }
+                              className={`absolute top-0.5 right-0.5 z-20 flex h-4 w-4 items-center justify-center rounded ${
+                                isLocked
+                                  ? "text-accent-text opacity-100"
+                                  : `text-subtle hover:text-accent-text focus-visible:opacity-100 ${
+                                      // Vises også når pulten er merket alene, så den
+                                      // finnes uten mus. Er flere merket, ville en
+                                      // hengelås på hvert eneste navn bare vært støy.
+                                      isSelected && !many
+                                        ? "opacity-100"
+                                        : "opacity-0 group-hover:opacity-100"
+                                    }`
+                              }`}
+                            >
+                              <LockIcon locked={isLocked} />
+                            </button>
+                          </span>
                         );
                       })}
                     </div>
@@ -602,7 +914,7 @@ export default function ClassroomCanvas({
                       </svg>
                     </button>
 
-                    {isSelected && (
+                    {isSelected && !many && (
                       // Verktøylinja ligger under pulten: over den ville den blitt
                       // klippet bort av rullefeltet rundt lerretet.
                       <div
@@ -627,7 +939,7 @@ export default function ClassroomCanvas({
                         <span className="h-4 w-px bg-border" aria-hidden />
                         <button
                           type="button"
-                          onClick={() => onSeatsChange(desk.id, seats - 1)}
+                          onClick={() => onSeatsChange([desk.id], -1)}
                           disabled={seats <= MIN_SEATS}
                           aria-label="Færre plasser"
                           className="rounded px-1.5 py-0.5 text-sm text-muted hover:text-foreground disabled:opacity-30"
@@ -639,7 +951,7 @@ export default function ClassroomCanvas({
                         </span>
                         <button
                           type="button"
-                          onClick={() => onSeatsChange(desk.id, seats + 1)}
+                          onClick={() => onSeatsChange([desk.id], 1)}
                           disabled={seats >= MAX_SEATS}
                           aria-label="Flere plasser"
                           className="rounded px-1.5 py-0.5 text-sm text-muted hover:text-foreground disabled:opacity-30"
@@ -662,8 +974,8 @@ export default function ClassroomCanvas({
                         <button
                           type="button"
                           onClick={() => {
-                            setSelectedId(null);
-                            onRemoveDesk(desk.id);
+                            setSelectedIds([]);
+                            onRemoveDesks([desk.id]);
                           }}
                           aria-label={`Fjern ${label}`}
                           className="rounded px-1.5 py-0.5 text-subtle hover:text-danger"
@@ -711,8 +1023,9 @@ export default function ClassroomCanvas({
 
       <p data-print-hide className="mt-4 text-center text-xs text-subtle">
         Dra et elevnavn til et annet sete for å bytte plass, eller trykk Enter på setet og Enter på
-        setet det skal byttes med. Dra topplinja på en pult for å flytte den, hjørnet nede til høyre
-        for å endre størrelsen, og klikk pulten for å gi bordet navn eller endre antall plasser.
+        setet det skal byttes med. Hengelåsen ved navnet holder eleven på plassen sin, også når du
+        genererer et nytt kart. Dra topplinja på en pult for å flytte den, hjørnet nede til høyre for
+        å endre størrelsen, og klikk pulten for å gi bordet navn eller endre antall plasser.
       </p>
     </div>
   );

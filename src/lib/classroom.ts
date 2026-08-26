@@ -1,4 +1,4 @@
-import type { Desk } from "./types";
+import type { Desk, SeatLocks } from "./types";
 
 /**
  * Piksel-mål for pulter og rutenettet "Rydd opp" stiller dem opp i.
@@ -154,6 +154,187 @@ export function resetDeskSize(desks: Desk[], deskId: string): Desk[] {
     delete next.h;
     return next;
   });
+}
+
+// ---------------------------------------------------------------------------
+// Flere pulter om gangen
+// ---------------------------------------------------------------------------
+
+export interface Rect {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+/** Rammen rundt et knippe pulter. Brukes til å plassere verktøylinja. */
+export function deskBounds(desks: Desk[]): Rect | null {
+  if (desks.length === 0) return null;
+  const x = Math.min(...desks.map((d) => d.x));
+  const y = Math.min(...desks.map((d) => d.y));
+  const right = Math.max(...desks.map((d) => d.x + deskWidth(d)));
+  const bottom = Math.max(...desks.map((d) => d.y + deskHeight(d)));
+  return { x, y, width: right - x, height: bottom - y };
+}
+
+/** Pultene som berøres av en ramme dratt over lerretet. */
+export function desksInRect(desks: Desk[], rect: Rect): string[] {
+  return desks
+    .filter(
+      (d) =>
+        d.x < rect.x + rect.width &&
+        rect.x < d.x + deskWidth(d) &&
+        d.y < rect.y + rect.height &&
+        rect.y < d.y + deskHeight(d)
+    )
+    .map((d) => d.id);
+}
+
+/**
+ * Flytter et utvalg pulter like langt, målt fra der de sto da draget startet.
+ * Vi regner fra startposisjonene og ikke fra forrige bilde, ellers samler
+ * avrundingen seg opp og pultene sklir fra hverandre underveis.
+ *
+ * Draget klemmes samlet mot venstre- og toppkanten: stoppet én pult ved kanten
+ * mens resten fortsatte, ville rekka læreren nettopp rettet inn blitt skjev.
+ */
+export function moveDesksFrom(
+  desks: Desk[],
+  origins: Record<string, { x: number; y: number }>,
+  dx: number,
+  dy: number
+): Desk[] {
+  const points = Object.values(origins);
+  if (points.length === 0) return desks;
+  const clampedX = Math.max(dx, -Math.min(...points.map((p) => p.x)));
+  const clampedY = Math.max(dy, -Math.min(...points.map((p) => p.y)));
+  return desks.map((d) => {
+    const origin = origins[d.id];
+    if (!origin) return d;
+    return { ...d, x: origin.x + clampedX, y: origin.y + clampedY };
+  });
+}
+
+/** Samme flytting, men fra der pultene står nå — piltastene bruker denne. */
+export function nudgeDesks(desks: Desk[], ids: Set<string>, dx: number, dy: number): Desk[] {
+  const chosen = desks.filter((d) => ids.has(d.id));
+  if (chosen.length === 0) return desks;
+  const clampedX = Math.max(dx, -Math.min(...chosen.map((d) => d.x)));
+  const clampedY = Math.max(dy, -Math.min(...chosen.map((d) => d.y)));
+  return desks.map((d) => (ids.has(d.id) ? { ...d, x: d.x + clampedX, y: d.y + clampedY } : d));
+}
+
+/**
+ * Stiller de merkede pultene på linje: `top` gir en vannrett rekke, `left` en
+ * loddrett kolonne. Linja legges der den øverste — eller den venstre — pulten
+ * alt står. Et gjennomsnitt ville flyttet på hver eneste pult; slik vet
+ * læreren på forhånd hvor rekka havner.
+ */
+export function alignDesks(desks: Desk[], ids: Set<string>, edge: "top" | "left"): Desk[] {
+  const chosen = desks.filter((d) => ids.has(d.id));
+  if (chosen.length < 2) return desks;
+
+  if (edge === "top") {
+    const y = Math.min(...chosen.map((d) => d.y));
+    return desks.map((d) => (ids.has(d.id) ? { ...d, y } : d));
+  }
+  const x = Math.min(...chosen.map((d) => d.x));
+  return desks.map((d) => (ids.has(d.id) ? { ...d, x } : d));
+}
+
+/**
+ * Gir de merkede pultene lik avstand. Den første og den siste blir stående, og
+ * resten fordeles mellom dem. Avstanden regnes mellom pultkantene og ikke
+ * mellom midtpunktene, så en rekke med både topulter og treerbord fortsatt ser
+ * jevn ut.
+ *
+ * Er pultene bredere til sammen enn plassen mellom den første og den siste,
+ * blir avstanden null i stedet for negativ: da står de kant i kant, og den
+ * siste skyves ut. Å regne ut en negativ avstand ville lagt pultene oppå
+ * hverandre — det motsatte av å rette dem inn.
+ */
+export function distributeDesks(desks: Desk[], ids: Set<string>, axis: "x" | "y"): Desk[] {
+  const chosen = desks.filter((d) => ids.has(d.id));
+  if (chosen.length < 3) return desks;
+
+  const size = (d: Desk) => (axis === "x" ? deskWidth(d) : deskHeight(d));
+  const start = (d: Desk) => (axis === "x" ? d.x : d.y);
+
+  const ordered = [...chosen].sort((a, b) => start(a) - start(b));
+  const last = ordered[ordered.length - 1];
+  const span = start(last) + size(last) - start(ordered[0]);
+  const used = ordered.reduce((sum, d) => sum + size(d), 0);
+  const gap = Math.max(0, (span - used) / (ordered.length - 1));
+
+  const placed = new Map<string, number>();
+  let cursor = start(ordered[0]);
+  for (const desk of ordered) {
+    placed.set(desk.id, Math.max(0, Math.round(cursor)));
+    cursor += size(desk) + gap;
+  }
+
+  return desks.map((d) => {
+    const value = placed.get(d.id);
+    if (value === undefined) return d;
+    return axis === "x" ? { ...d, x: value } : { ...d, y: value };
+  });
+}
+
+/**
+ * Aksen et utvalg ligger langs. En rekke er bredere enn den er høy, og skal
+ * fordeles vannrett; en kolonne motsatt.
+ */
+export function spreadAxis(desks: Desk[], ids: Set<string>): "x" | "y" {
+  const bounds = deskBounds(desks.filter((d) => ids.has(d.id)));
+  return !bounds || bounds.width >= bounds.height ? "x" : "y";
+}
+
+/** Endrer antall plasser på flere pulter samtidig, ett steg om gangen. */
+export function changeDeskSeats(desks: Desk[], ids: Set<string>, delta: number): Desk[] {
+  return desks.map((d) =>
+    ids.has(d.id) ? clampDeskSize({ ...d, seats: clampSeats(d.seats + delta) }) : d
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Låste plasser
+// ---------------------------------------------------------------------------
+
+/**
+ * Leser låsene og kaster dem som ikke lenger peker på et sete som finnes:
+ * pulten kan være fjernet, eller ha fått færre plasser, siden læreren låste.
+ * En lås til et sete som ikke finnes ville ellers blitt liggende usynlig og
+ * holdt eleven utenfor fordelingen.
+ *
+ * `studentIds` fjerner i tillegg låser på elever som er slettet.
+ */
+export function validLocks(raw: unknown, desks: Desk[], studentIds?: Set<string>): SeatLocks {
+  if (typeof raw !== "object" || raw === null) return {};
+
+  const seatsByDesk = new Map(desks.map((d) => [d.id, clampSeats(d.seats)]));
+  const result: SeatLocks = {};
+
+  for (const [studentId, value] of Object.entries(raw as Record<string, unknown>)) {
+    if (studentIds && !studentIds.has(studentId)) continue;
+    if (typeof value !== "object" || value === null) continue;
+
+    const lock = value as { desk_id?: unknown; index?: unknown };
+    const deskId = typeof lock.desk_id === "string" ? lock.desk_id : "";
+    const index = Number(lock.index);
+    const seats = seatsByDesk.get(deskId);
+    if (seats === undefined) continue;
+    if (!Number.isInteger(index) || index < 0 || index >= seats) continue;
+
+    result[studentId] = { desk_id: deskId, index };
+  }
+  return result;
+}
+
+/** Om to sett med låser er like — sparer en lagring når ingenting endret seg. */
+export function sameLocks(a: SeatLocks, b: SeatLocks): boolean {
+  const keys = Object.keys(a);
+  if (keys.length !== Object.keys(b).length) return false;
+  return keys.every((id) => b[id] && b[id].desk_id === a[id].desk_id && b[id].index === a[id].index);
 }
 
 /**

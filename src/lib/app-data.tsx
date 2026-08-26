@@ -30,8 +30,9 @@ import {
   generateAndSaveChart,
   updateChartLayout,
   updateDesks,
+  updateLocks,
 } from "./api";
-import { clampSeats, normalizeDesks } from "./classroom";
+import { clampSeats, normalizeDesks, sameLocks, validLocks } from "./classroom";
 import { pairsFromAssignments } from "./seating";
 import type {
   ContactTeacher,
@@ -41,6 +42,7 @@ import type {
   PairHistoryRow,
   SchoolClass,
   SeatingChart,
+  SeatLocks,
   Student,
 } from "./types";
 
@@ -70,6 +72,10 @@ interface AppDataValue {
   deskCols: number;
   applyDesks: (desks: Desk[], cols?: number, persist?: boolean) => void;
   assignments: DeskAssignments;
+  /** Elever som er låst til et sete, med elev-id som nøkkel. */
+  locks: SeatLocks;
+  /** Låser eleven til setet — eller låser opp igjen om hen alt står der. */
+  toggleLock: (studentId: string, seat: { deskId: string; index: number }) => void;
   charts: SeatingChart[];
   activeChartId: string | null;
   showChart: (chartId: string) => void;
@@ -215,26 +221,74 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
     [charts, activeChartId]
   );
 
+  // Låsene leses fra klasseraden på samme måte som pultene, og vaskes mot
+  // pultene og elevene som faktisk finnes nå. En lås til en pult læreren har
+  // fjernet ville ellers holdt eleven utenfor fordelingen for godt.
+  const locks = useMemo(
+    () =>
+      validLocks(
+        activeClass?.locked_seats,
+        desks,
+        new Set(activeStudents.map((s) => s.id))
+      ),
+    [activeClass, desks, activeStudents]
+  );
+
   // --- Endringer -----------------------------------------------------------
 
   const applyDesks = useCallback(
     (next: Desk[], cols?: number, persist = true) => {
       if (!activeClassId) return;
       const nextCols = cols ?? deskCols;
+      // Fjernes en pult, eller får den færre plasser, ryker låsene til setene
+      // som forsvant — i samme endring, så de aldri blir liggende igjen.
+      const nextLocks = validLocks(locks, next);
 
       setClasses((prev) =>
-        prev.map((c) => (c.id === activeClassId ? { ...c, desks: next, desk_cols: nextCols } : c))
+        prev.map((c) =>
+          c.id === activeClassId
+            ? { ...c, desks: next, desk_cols: nextCols, locked_seats: nextLocks }
+            : c
+        )
       );
       if (!persist) return;
 
       if (saveTimer.current) clearTimeout(saveTimer.current);
       saveTimer.current = setTimeout(() => {
-        updateDesks(activeClassId, next, nextCols).catch((e) =>
+        updateDesks(activeClassId, next, nextCols, nextLocks).catch((e) =>
           setError(e instanceof Error ? e.message : String(e))
         );
       }, 300);
     },
-    [activeClassId, deskCols]
+    [activeClassId, deskCols, locks]
+  );
+
+  /**
+   * Låser eleven til setet hen sitter på, eller låser opp igjen. Låsen hører
+   * til klasserommet og ikke til kartet, så den står også etter at læreren har
+   * generert et nytt klassekart — det er hele poenget med den.
+   */
+  const toggleLock = useCallback(
+    (studentId: string, seat: { deskId: string; index: number }) => {
+      if (!activeClassId) return;
+
+      const current = locks[studentId];
+      const next: SeatLocks = { ...locks };
+      if (current && current.desk_id === seat.deskId && current.index === seat.index) {
+        delete next[studentId];
+      } else {
+        next[studentId] = { desk_id: seat.deskId, index: seat.index };
+      }
+      if (sameLocks(next, locks)) return;
+
+      setClasses((prev) =>
+        prev.map((c) => (c.id === activeClassId ? { ...c, locked_seats: next } : c))
+      );
+      updateLocks(activeClassId, next).catch((e) =>
+        setError(e instanceof Error ? e.message : String(e))
+      );
+    },
+    [activeClassId, locks]
   );
 
   const createClass = useCallback(async (name: string, defaultContactTeacher?: string) => {
@@ -370,7 +424,11 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
 
       const moving = nextLayout[from.deskId][from.index] ?? null;
       if (!moving) return;
-      nextLayout[from.deskId][from.index] = nextLayout[to.deskId][to.index] ?? null;
+      // Låste elever står i ro, og kan heller ikke dyttes vekk av en annen.
+      const displaced = nextLayout[to.deskId][to.index] ?? null;
+      if (locks[moving] || (displaced && locks[displaced])) return;
+
+      nextLayout[from.deskId][from.index] = displaced;
       nextLayout[to.deskId][to.index] = moving;
 
       const before = pairsFromAssignments(chart.layout);
@@ -386,7 +444,7 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
         .then(setPairHistory)
         .catch((e) => setError(e instanceof Error ? e.message : String(e)));
     },
-    [activeClassId, activeChartId, charts, desks]
+    [activeClassId, activeChartId, charts, desks, locks]
   );
 
   const generate = useCallback(async () => {
@@ -444,6 +502,8 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
       deskCols,
       applyDesks,
       assignments,
+      locks,
+      toggleLock,
       charts,
       activeChartId,
       showChart,
@@ -477,6 +537,8 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
       deskCols,
       applyDesks,
       assignments,
+      locks,
+      toggleLock,
       charts,
       activeChartId,
       showChart,
