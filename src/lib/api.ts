@@ -2,8 +2,16 @@
 
 import { mutate, newId, read, teacherKey, type LocalData } from "./local-db";
 import { clampSeats, ensureCapacity, makeGrid, validLocks } from "./classroom";
-import { buildHistoryMap, countNewPairs, generateSeatingChart, pairsFromGroups } from "./seating";
+import {
+  apartViolations,
+  buildHistoryMap,
+  countNewPairs,
+  generateSeatingChart,
+  pairKey as canonicalPairKey,
+  pairsFromGroups,
+} from "./seating";
 import type {
+  ApartPair,
   ContactTeacher,
   Desk,
   DeskAssignments,
@@ -102,6 +110,7 @@ export async function deleteClass(id: string): Promise<void> {
     data.students = data.students.filter((s) => s.class_id !== id);
     data.charts = data.charts.filter((c) => c.class_id !== id);
     data.pairs = data.pairs.filter((p) => p.class_id !== id);
+    data.apart_pairs = data.apart_pairs.filter((p) => p.class_id !== id);
   });
 }
 
@@ -193,6 +202,9 @@ export async function deleteStudent(id: string): Promise<void> {
   await mutate((data) => {
     data.students = data.students.filter((s) => s.id !== id);
     data.pairs = data.pairs.filter((p) => p.student_a_id !== id && p.student_b_id !== id);
+    data.apart_pairs = data.apart_pairs.filter(
+      (p) => p.student_a_id !== id && p.student_b_id !== id
+    );
     for (const found of data.classes) {
       if (found.locked_seats?.[id]) delete found.locked_seats[id];
     }
@@ -270,6 +282,52 @@ export async function deleteContactTeacher(id: string): Promise<void> {
 }
 
 // ---------------------------------------------------------------------------
+// Elever som ikke skal sitte sammen
+// ---------------------------------------------------------------------------
+
+/** Elevene lagres alltid i samme rekkefølge, så paret bare finnes én gang. */
+function orderPair(a: string, b: string): [string, string] {
+  return a < b ? [a, b] : [b, a];
+}
+
+export async function fetchApartPairs(classId: string): Promise<ApartPair[]> {
+  return read((data) => data.apart_pairs.filter((p) => p.class_id === classId));
+}
+
+export async function addApartPair(
+  classId: string,
+  studentA: string,
+  studentB: string
+): Promise<ApartPair> {
+  if (studentA === studentB) throw new Error("Velg to forskjellige elever.");
+  const [a, b] = orderPair(studentA, studentB);
+
+  return mutate((data) => {
+    const finnes = data.apart_pairs.some(
+      (p) => p.class_id === classId && p.student_a_id === a && p.student_b_id === b
+    );
+    if (finnes) throw new Error("Regelen står i lista fra før.");
+
+    const created: ApartPair = { class_id: classId, student_a_id: a, student_b_id: b };
+    data.apart_pairs.push(created);
+    return created;
+  });
+}
+
+export async function removeApartPair(
+  classId: string,
+  studentA: string,
+  studentB: string
+): Promise<void> {
+  const [a, b] = orderPair(studentA, studentB);
+  await mutate((data) => {
+    data.apart_pairs = data.apart_pairs.filter(
+      (p) => !(p.class_id === classId && p.student_a_id === a && p.student_b_id === b)
+    );
+  });
+}
+
+// ---------------------------------------------------------------------------
 // Klassekart / historikk
 // ---------------------------------------------------------------------------
 
@@ -308,6 +366,11 @@ export interface GenerateResult {
   desks: Desk[];
   newPairs: number;
   totalPairs: number;
+  /**
+   * Par som måtte settes sammen likevel, fordi reglene ikke lot seg oppfylle.
+   * Læreren skal få vite det — ellers ser kartet riktig ut mens det ikke er det.
+   */
+  brokenRules: [string, string][];
 }
 
 /** Lagrer en endret elevplassering (f.eks. etter at læreren har dratt en elev). */
@@ -388,14 +451,21 @@ export async function generateAndSaveChart(
       if (index !== undefined) pinned.set(studentId, index);
     }
 
+    const apart = new Set(
+      data.apart_pairs
+        .filter((p) => p.class_id === classId)
+        .map((p) => canonicalPairKey(p.student_a_id, p.student_b_id))
+    );
+
     const historyMap = buildHistoryMap(data.pairs.filter((p) => p.class_id === classId));
     const groups = generateSeatingChart(
       students,
       roomyDesks.map((d) => d.seats),
       historyMap,
-      pinned
+      { pinned, apart }
     );
     const { newPairs, totalPairs } = countNewPairs(groups, historyMap);
+    const brokenRules = apartViolations(groups, apart);
 
     // Låste elever settes på nøyaktig det setet de er låst til; resten fyller
     // setene som er igjen ved samme pult.
@@ -435,6 +505,6 @@ export async function generateAndSaveChart(
       found.desk_cols = deskCols;
     }
 
-    return { chart, desks: roomyDesks, newPairs, totalPairs };
+    return { chart, desks: roomyDesks, newPairs, totalPairs, brokenRules };
   });
 }

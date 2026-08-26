@@ -1,7 +1,8 @@
 "use client";
 
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { useAppData } from "@/lib/app-data";
+import { pairKey } from "@/lib/seating";
 import {
   addColumn,
   addDesk,
@@ -86,6 +87,7 @@ export default function ClassDetailPage() {
     assignments,
     locks,
     toggleLock,
+    apartPairs,
     charts,
     activeChartId,
     moveStudent,
@@ -102,7 +104,19 @@ export default function ClassDetailPage() {
     [activeStudents]
   );
 
+  const apartKeys = useMemo(
+    () => new Set(apartPairs.map((p) => pairKey(p.student_a_id, p.student_b_id))),
+    [apartPairs]
+  );
+
   const activeChart = charts.find((c) => c.id === activeChartId);
+
+  /**
+   * Om en pult dras akkurat nå. Klasserommet melder fra ved å lagre først når
+   * draget er ferdig (`persist`), og vi bruker det til å holde varselet om
+   * overlappende pulter i ro underveis — se under.
+   */
+  const [dragging, setDragging] = useState(false);
 
   if (loading)
     return (
@@ -181,12 +195,32 @@ export default function ClassDetailPage() {
       )}
 
       {lastResult && (
-        <p
-          role="status"
-          className="mb-3 inline-flex rounded-lg border border-good/30 bg-good-soft px-3 py-1.5 text-xs text-good"
-        >
-          {lastResult.newPairs} av {lastResult.totalPairs} elevpar sitter sammen for første gang.
-        </p>
+        <div className="mb-3 flex flex-col items-start gap-2">
+          <p
+            role="status"
+            className="inline-flex rounded-lg border border-good/30 bg-good-soft px-3 py-1.5 text-xs text-good"
+          >
+            {lastResult.newPairs} av {lastResult.totalPairs} elevpar sitter sammen for første gang.
+          </p>
+
+          {/* Reglene er ikke alltid mulige å oppfylle — for få bord, eller to
+              låste elever ved samme pult. Da skal læreren få vite hvem det
+              gjelder, ikke få et kart som ser riktig ut uten å være det. */}
+          {lastResult.brokenRules.length > 0 && (
+            <p
+              role="status"
+              className="inline-flex rounded-lg border border-danger/40 bg-danger-soft px-3 py-1.5 text-xs text-danger"
+            >
+              {plural(lastResult.brokenRules.length, "regel", "regler")} kunne ikke oppfylles:{" "}
+              {lastResult.brokenRules
+                .map(([a, b]) =>
+                  `${studentsById.get(a)?.name ?? "?"} og ${studentsById.get(b)?.name ?? "?"}`
+                )
+                .join(", ")}{" "}
+              måtte settes ved samme bord. Flere bord, eller færre låste plasser, gir mer å gå på.
+            </p>
+          )}
+        </div>
       )}
 
       {/* Verktøy for å bygge klasserommet. Lå tidligere på én lang linje sammen
@@ -241,7 +275,11 @@ export default function ClassDetailPage() {
         </button>
       </div>
 
-      {overlapping && (
+      {/* Varselet holdes tilbake mens en pult dras. Det ligger over lerretet, så
+          det å vise og skjule det midt i draget dytter hele klasserommet opp og
+          ned: pulten glir vekk fra markøren, overlappingen opphører, varselet
+          forsvinner — og så begynner det på nytt. Det er den flimringen. */}
+      {overlapping && !dragging && (
         <div
           data-print-hide
           className="mb-3 flex flex-wrap items-center justify-between gap-2 rounded-lg border border-border bg-surface px-3 py-2 text-xs text-muted"
@@ -278,7 +316,11 @@ export default function ClassDetailPage() {
         assignments={assignments}
         studentsById={studentsById}
         locks={locks}
-        onDesksChange={(next, persist) => applyDesks(next, undefined, persist)}
+        apartKeys={apartKeys}
+        onDesksChange={(next, persist) => {
+          setDragging(!persist);
+          applyDesks(next, undefined, persist);
+        }}
         onRemoveDesks={(deskIds) => {
           const remove = new Set(deskIds);
           applyDesks(desks.filter((d) => !remove.has(d.id)));
@@ -287,9 +329,10 @@ export default function ClassDetailPage() {
           applyDesks(changeDeskSeats(desks, new Set(deskIds), delta))
         }
         onRenameDesk={(deskId, name) => applyDesks(setDeskName(desks, deskId, name))}
-        onResizeDesk={(deskId, w, h, persist) =>
-          applyDesks(setDeskSize(desks, deskId, w, h), undefined, persist)
-        }
+        onResizeDesk={(deskId, w, h, persist) => {
+          setDragging(!persist);
+          applyDesks(setDeskSize(desks, deskId, w, h), undefined, persist);
+        }}
         onResetDeskSize={(deskId) => applyDesks(resetDeskSize(desks, deskId))}
         onMoveStudent={moveStudent}
         onToggleLock={toggleLock}

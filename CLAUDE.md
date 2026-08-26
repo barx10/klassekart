@@ -48,6 +48,7 @@ src/
     personvern/page.tsx         Personvernsiden læreren kan vise fram
   components/
     Sidebar.tsx                 Klasser, elever, tidligere kart, par-oversikt
+    ApartPairs.tsx              Elevpar som ikke skal sitte ved samme bord
     ClassroomCanvas.tsx         Klasserommet: pulter, draging, seter
     StudentManager.tsx          Legg til/rediger elever (kompakt, for menyen)
     PairHeatmap.tsx             Varmekart over hvem som har sittet sammen
@@ -57,7 +58,7 @@ src/
   lib/
     app-data.tsx                All delt tilstand (se under)
     classroom.ts                Pult-geometri, merking av flere pulter, låser
-    seating.ts                  Fordelingsalgoritmen (simulert herding)
+    seating.ts                  Fordelingsalgoritmen (simulert herding) + regler
     api.ts                      Datalaget: klasser, elever, kart, par
     local-db.ts                 Lagring i nettleseren (IndexedDB) + sikkerhetskopi
     backup-file.ts              Får sikkerhetskopien ned på maskinen
@@ -89,6 +90,18 @@ fire på rekke, fordi bordgrupper står slik i virkeligheten (`seatGrid()`).
 Topplinja på pulten har to jobber: den viser bordnavnet og er draghåndtaket.
 Uten den ville elevkortene og pultflyttingen kjempet om det samme klikket,
 siden setene dekker nesten hele pulten.
+
+**Lerretet må stå stille mens en pult dras.** Både målene (`canvasSize`) og
+«Tilpass»-zoomen fryses i `heldRoom` så lenge draget varer, og varselet om
+overlappende pulter holdes tilbake av `dragging` i klassesida. Uten det måles
+rommet på nytt for hver musebevegelse: `mx-auto` flytter klasserommet sidelengs
+når bredden endrer seg, og varselet over lerretet dytter det opp og ned når to
+pulter så vidt berører hverandre. Da glir pulten vekk fra markøren, overlappingen
+opphører, varselet forsvinner — og det begynner på nytt. Det ser ut som at hele
+klasserommet blinker.
+
+Av samme grunn regnes **sluttstillingen ut fra der markøren slippes**, ikke fra
+det siste bildet React rakk å tegne.
 
 To ting som lett brekker igjen:
 
@@ -130,6 +143,25 @@ ikke lenger stemmer, og `applyDesks` skriver låser og pulter i **samme**
 endring — ellers ville en lås til en fjernet pult blitt liggende usynlig og
 holdt eleven utenfor fordelingen for godt.
 
+#### Hvem som ikke skal sitte sammen
+
+`apart_pairs` er elevpar læreren har bestemt at ikke skal settes ved samme bord.
+**«Sammen» betyr samme bord**, slik resten av appen regner par — par-historikken
+og varmekartet teller to elever som sammen når de sitter ved samme pult. En
+finere naboskapsmodell (sidemann kontra diagonalt ved en firergruppe) ville ikke
+stemt med noe annet i appen.
+
+Regelen er en straff i kostfunksjonen på `APART_PENALTY = 1000` — tyngre enn all
+par-historikk til sammen, uansett hvor lenge klassen har vært i gang. Den er
+altså *myk*: er reglene umulige, får du et kart som bryter en av dem. Derfor
+prøves fordelingen på nytt inntil `APART_ATTEMPTS` ganger, og det som står igjen
+rapporteres som `brokenRules` og vises for læreren. Et kart som ser riktig ut
+uten å være det, er verre enn ingen regel.
+
+Manuelle flyttinger **advares om, ikke nektes**: bryter læreren en regel for
+hånd, får bordet rød ramme og et merke. I øyeblikket er det læreren som vet
+best.
+
 ### Klassekart og historikk
 
 `seating_charts.layout` er `{ pultId: [elevId | null, ...] }` — én plass per
@@ -168,6 +200,9 @@ om hvem lærerne er.
 
 Versjon 3 la til `locked_seats` på klassene. Eldre kopier mangler feltet, og
 leses som «ingen låser».
+
+Versjon 4 la til `apart_pairs`. Eldre kopier mangler lista, og leses som «ingen
+regler».
 
 **Sikkerhetskopien er hele datasettet, ikke én klasse.** Derfor står det ikke
 noe klassenavn i filnavnet, og derfor erstatter `replaceAll()` alt ved import.

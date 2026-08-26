@@ -20,7 +20,10 @@ import {
   deleteChart as apiDeleteChart,
   deleteStudent as apiDeleteStudent,
   updateStudent as apiUpdateStudent,
+  addApartPair as apiAddApartPair,
+  removeApartPair as apiRemoveApartPair,
   adjustPairHistory,
+  fetchApartPairs,
   fetchAllStudents,
   fetchChartHistory,
   fetchContactTeachers,
@@ -35,6 +38,7 @@ import {
 import { clampSeats, normalizeDesks, sameLocks, validLocks } from "./classroom";
 import { pairsFromAssignments } from "./seating";
 import type {
+  ApartPair,
   ContactTeacher,
   Desk,
   DeskAssignments,
@@ -83,13 +87,17 @@ interface AppDataValue {
   pairHistory: PairHistoryRow[];
   /** Nullstiller par-historikken for klassen som vises (skoleårsslutt). */
   resetPairHistory: () => Promise<void>;
+  /** Elevpar i klassen som ikke skal sitte ved samme bord. */
+  apartPairs: ApartPair[];
+  addApartPair: (studentA: string, studentB: string) => Promise<void>;
+  removeApartPair: (studentA: string, studentB: string) => Promise<void>;
   moveStudent: (
     from: { deskId: string; index: number },
     to: { deskId: string; index: number }
   ) => void;
   generate: () => Promise<void>;
   generating: boolean;
-  lastResult: { newPairs: number; totalPairs: number } | null;
+  lastResult: { newPairs: number; totalPairs: number; brokenRules: [string, string][] } | null;
   classLoading: boolean;
   /** Leser alt inn på nytt fra lagringen — etter at en sikkerhetskopi er hentet inn. */
   reload: () => Promise<void>;
@@ -115,13 +123,19 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
   const [charts, setCharts] = useState<SeatingChart[]>([]);
   const [activeChartId, setActiveChartId] = useState<string | null>(null);
   const [pairHistory, setPairHistory] = useState<PairHistoryRow[]>([]);
+  const [apartPairs, setApartPairs] = useState<ApartPair[]>([]);
   const [loadedClassId, setLoadedClassId] = useState<string | null>(null);
   const [generating, setGenerating] = useState(false);
   // Teller opp når lagringen er byttet ut under føttene på oss (import), slik
   // at klassen som vises leses inn på nytt selv om adressen står stille.
   const [dataVersion, setDataVersion] = useState(0);
   const [generateResult, setGenerateResult] = useState<
-    { classId: string; newPairs: number; totalPairs: number } | null
+    {
+      classId: string;
+      newPairs: number;
+      totalPairs: number;
+      brokenRules: [string, string][];
+    } | null
   >(null);
 
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -149,6 +163,7 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
     setCharts([]);
     setActiveChartId(null);
     setPairHistory([]);
+    setApartPairs([]);
     setLoadedClassId(null);
     setGenerateResult(null);
     await loadAll();
@@ -160,12 +175,17 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
     if (!activeClassId) return;
     let cancelled = false;
 
-    Promise.all([fetchChartHistory(activeClassId), fetchPairHistory(activeClassId)])
-      .then(([chartRows, history]) => {
+    Promise.all([
+      fetchChartHistory(activeClassId),
+      fetchPairHistory(activeClassId),
+      fetchApartPairs(activeClassId),
+    ])
+      .then(([chartRows, history, apart]) => {
         if (cancelled) return;
         setCharts(chartRows);
         setActiveChartId(chartRows[0]?.id ?? null);
         setPairHistory(history);
+        setApartPairs(apart);
         setLoadedClassId(activeClassId);
       })
       .catch((e) => {
@@ -190,7 +210,11 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
   const lastResult = useMemo(
     () =>
       generateResult && generateResult.classId === activeClassId
-        ? { newPairs: generateResult.newPairs, totalPairs: generateResult.totalPairs }
+        ? {
+            newPairs: generateResult.newPairs,
+            totalPairs: generateResult.totalPairs,
+            brokenRules: generateResult.brokenRules,
+          }
         : null,
     [generateResult, activeClassId]
   );
@@ -365,6 +389,24 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
     [refreshTeachers]
   );
 
+  const addApartPair = useCallback(
+    async (studentA: string, studentB: string) => {
+      if (!activeClassId) return;
+      const created = await apiAddApartPair(activeClassId, studentA, studentB);
+      setApartPairs((prev) => [...prev, created]);
+    },
+    [activeClassId]
+  );
+
+  const removeApartPair = useCallback(
+    async (studentA: string, studentB: string) => {
+      if (!activeClassId) return;
+      await apiRemoveApartPair(activeClassId, studentA, studentB);
+      setApartPairs(await fetchApartPairs(activeClassId));
+    },
+    [activeClassId]
+  );
+
   const showChart = useCallback((chartId: string) => setActiveChartId(chartId), []);
 
   const resetPairHistory = useCallback(async () => {
@@ -458,6 +500,7 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
         desks: usedDesks,
         newPairs,
         totalPairs,
+        brokenRules,
       } = await generateAndSaveChart(activeClassId, desks, deskCols);
 
       // Manglet det plasser, la generereringen til pulter og lagret dem.
@@ -471,7 +514,7 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
 
       setCharts((prev) => [chart, ...prev]);
       setActiveChartId(chart.id);
-      setGenerateResult({ classId: activeClassId, newPairs, totalPairs });
+      setGenerateResult({ classId: activeClassId, newPairs, totalPairs, brokenRules });
       setPairHistory(await fetchPairHistory(activeClassId));
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
@@ -510,6 +553,9 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
       deleteChart,
       pairHistory,
       resetPairHistory,
+      apartPairs,
+      addApartPair,
+      removeApartPair,
       moveStudent,
       generate,
       generating,
@@ -545,6 +591,9 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
       deleteChart,
       pairHistory,
       resetPairHistory,
+      apartPairs,
+      addApartPair,
+      removeApartPair,
       moveStudent,
       generate,
       generating,
