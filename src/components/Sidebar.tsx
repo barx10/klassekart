@@ -8,10 +8,12 @@ import { useAppData } from "@/lib/app-data";
 import StudentManager from "./StudentManager";
 import PairHeatmap from "./PairHeatmap";
 import ContactTeachers from "./ContactTeachers";
+import HelpTip from "./HelpTip";
 import Modal from "./Modal";
 import ConfirmDialog from "./ConfirmDialog";
 import NewClassForm from "./NewClassForm";
 import { backupFilename, exportBackup, parseBackup, replaceAll, type LocalData } from "@/lib/local-db";
+import { SaveCancelled, saveTextToFile } from "@/lib/backup-file";
 import { ghostButton, plural, secondaryButton } from "@/lib/ui";
 
 type Section = "elever" | "historikk" | null;
@@ -137,21 +139,17 @@ export default function Sidebar({ open, hidden, onClose, onHide, onAbout }: Prop
   }
   const fileInput = useRef<HTMLInputElement>(null);
 
-  /** Laster ned alt som ligger lagret som én JSON-fil. */
+  /**
+   * Lagrer alt som ligger i programmet som én fil — alle klassene, ikke bare
+   * den som vises. Derfor står det ikke noe klassenavn i filnavnet: fila er
+   * hele datasettet, og å hente den inn igjen erstatter alt.
+   */
   async function saveBackup() {
     try {
-      const url = URL.createObjectURL(
-        new Blob([await exportBackup()], { type: "application/json" })
-      );
-      const link = document.createElement("a");
-      link.href = url;
-      link.download = backupFilename();
-      document.body.appendChild(link);
-      link.click();
-      link.remove();
-      // Nettleseren trenger adressen litt til etter klikket.
-      setTimeout(() => URL.revokeObjectURL(url), 1000);
+      await saveTextToFile(await exportBackup(), backupFilename());
     } catch (e) {
+      // Lukket brukeren «Lagre som» uten å velge noe, er det ikke en feil.
+      if (e instanceof SaveCancelled) return;
       setError(e instanceof Error ? e.message : String(e));
     }
   }
@@ -441,9 +439,23 @@ export default function Sidebar({ open, hidden, onClose, onHide, onAbout }: Prop
         )}
 
         <div className="mt-auto border-t border-border p-2">
-          <h2 className="px-2 pb-1 pt-1 text-xs font-semibold uppercase tracking-wide text-subtle">
-            Sikkerhetskopi
-          </h2>
+          <div className="flex flex-wrap items-center gap-1.5 px-2 pb-1.5 pt-1">
+            <h2 className="text-xs font-semibold uppercase tracking-wide text-subtle">
+              Sikkerhetskopi
+            </h2>
+            <HelpTip label="Hva er sikkerhetskopien, og hva slags fil er det?">
+              Kopien inneholder <strong className="text-foreground">alle</strong> klassene,
+              elevene, kontaktlærerne og de tidligere kartene — ikke bare klassen du ser på nå.
+              Henter du den inn igjen, erstatter den alt som ligger i programmet.
+              <br />
+              <br />
+              Fila heter noe slikt som{" "}
+              <span className="font-mono text-[10px] text-foreground">{backupFilename()}</span>.
+              «.json» er bare formatet Klassekart lagrer i — fila hører til programmet og skal ikke
+              åpnes i Word eller Excel. Du henter den inn igjen med knappen under. Legg den gjerne
+              i OneDrive eller der skolen ellers lagrer ting.
+            </HelpTip>
+          </div>
           <p className="px-2 pb-1.5 text-xs text-subtle">
             Alt lagres i denne nettleseren. Lagre en kopi jevnlig — tømmes
             nettleserdataene, er klassene borte.
@@ -453,14 +465,14 @@ export default function Sidebar({ open, hidden, onClose, onHide, onAbout }: Prop
             onClick={saveBackup}
             className={`${ghostButton("sm")} w-full justify-start`}
           >
-            Lagre kopi til fil
+            Lagre sikkerhetskopi …
           </button>
           <button
             type="button"
             onClick={() => fileInput.current?.click()}
             className={`${ghostButton("sm")} w-full justify-start`}
           >
-            Hent inn fra fil …
+            Hent inn sikkerhetskopi …
           </button>
           <input
             ref={fileInput}

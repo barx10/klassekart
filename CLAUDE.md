@@ -53,12 +53,14 @@ src/
     PairHeatmap.tsx             Varmekart over hvem som har sittet sammen
     ContactTeachers.tsx         Kontaktlærerne, og elevene hver av dem har
     Modal.tsx                   Brukes til par-oversikten og kontaktlærerne
+    HelpTip.tsx                 Spørsmålstegn som forklarer noe ved siden av seg
   lib/
     app-data.tsx                All delt tilstand (se under)
     classroom.ts                Pult-geometri: bredde/høyde, rutenett, rydd opp
     seating.ts                  Fordelingsalgoritmen (simulert herding)
     api.ts                      Datalaget: klasser, elever, kart, par
     local-db.ts                 Lagring i nettleseren (IndexedDB) + sikkerhetskopi
+    backup-file.ts              Får sikkerhetskopien ned på maskinen
     types.ts                    Delte typer
 docs/personvern.md              Vurderingene bak, og veien videre om appen skal deles
 ```
@@ -131,6 +133,18 @@ hjemme inne i `desks`; `normalizeDesks()` fyller inn standardverdier.
 Versjon 2 la til `contact_teachers`. En kopi fra versjon 1 har ikke feltet, og
 da bygges lista av navnene som står på elevene og klassene — det er alt vi vet
 om hvem lærerne er.
+
+**Sikkerhetskopien er hele datasettet, ikke én klasse.** Derfor står det ikke
+noe klassenavn i filnavnet, og derfor erstatter `replaceAll()` alt ved import.
+Skal én klasse kunne tas ut for seg, holder det ikke å filtrere ved lagring —
+importen må da kunne slå sammen i stedet for å erstatte, og håndtere
+id-kollisjoner og par-historikk.
+
+`saveTextToFile()` i `backup-file.ts` prøver «Lagre som»-vinduet
+(`showSaveFilePicker`) først, så læreren ser hvor fila havner. Safari og
+Firefox har det ikke, og da faller den tilbake til vanlig nedlasting. At
+brukeren lukker vinduet uten å velge noe er ikke en feil — det kommer som
+`SaveCancelled`, og skal ikke gi noen feilmelding.
 
 ### Kontaktlærere
 
