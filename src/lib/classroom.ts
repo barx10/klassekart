@@ -225,52 +225,134 @@ export function nudgeDesks(desks: Desk[], ids: Set<string>, dx: number, dy: numb
 }
 
 /**
- * Stiller de merkede pultene på linje: `top` gir en vannrett rekke, `left` en
- * loddrett kolonne. Linja legges der den øverste — eller den venstre — pulten
- * alt står. Et gjennomsnitt ville flyttet på hver eneste pult; slik vet
- * læreren på forhånd hvor rekka havner.
+ * Midtpunktet på en pult. Alt rettes inn etter midten og ikke etter kanten:
+ * står et treerbord ved siden av en firergruppe, er det midtlinja som gjør at
+ * rekka ser rett ut.
  */
-export function alignDesks(desks: Desk[], ids: Set<string>, edge: "top" | "left"): Desk[] {
-  const chosen = desks.filter((d) => ids.has(d.id));
-  if (chosen.length < 2) return desks;
+function midX(desk: Desk): number {
+  return desk.x + deskWidth(desk) / 2;
+}
 
-  if (edge === "top") {
-    const y = Math.min(...chosen.map((d) => d.y));
-    return desks.map((d) => (ids.has(d.id) ? { ...d, y } : d));
-  }
-  const x = Math.min(...chosen.map((d) => d.x));
-  return desks.map((d) => (ids.has(d.id) ? { ...d, x } : d));
+function midY(desk: Desk): number {
+  return desk.y + deskHeight(desk) / 2;
+}
+
+function median(values: number[]): number {
+  const sorted = [...values].sort((a, b) => a - b);
+  const midt = Math.floor(sorted.length / 2);
+  return sorted.length % 2 === 1 ? sorted[midt] : (sorted[midt - 1] + sorted[midt]) / 2;
 }
 
 /**
- * Gir de merkede pultene lik avstand. Den første og den siste blir stående, og
- * resten fordeles mellom dem. Avstanden regnes mellom pultkantene og ikke
- * mellom midtpunktene, så en rekke med både topulter og treerbord fortsatt ser
- * jevn ut.
+ * Deler de merkede pultene i rader — eller kolonner — etter hvor de står.
  *
- * Er pultene bredere til sammen enn plassen mellom den første og den siste,
- * blir avstanden null i stedet for negativ: da står de kant i kant, og den
- * siste skyves ut. Å regne ut en negativ avstand ville lagt pultene oppå
- * hverandre — det motsatte av å rette dem inn.
+ * Dette er hele poenget med innrettingen. Læreren merker gjerne et helt felt
+ * med bord og ikke bare én rekke, og ga vi da alle sammen samme y, ville to
+ * rader landet rett oppå hverandre. Hver rad rettes derfor inn for seg.
+ *
+ * En pult hører til raden så lenge midten ligger innenfor drøyt en halv
+ * pulthøyde fra snittet i raden så langt. Rader satt opp av «Rydd opp» ligger
+ * mye lenger fra hverandre enn det, mens en rad læreren har dratt skjevt
+ * fortsatt henger sammen.
+ */
+function bands(desks: Desk[], kind: "row" | "column"): Desk[][] {
+  const langs = kind === "row" ? midY : midX;
+  const tvers = kind === "row" ? deskHeight : deskWidth;
+
+  const sorted = [...desks].sort((a, b) => langs(a) - langs(b));
+  const result: Desk[][] = [];
+  let current: Desk[] = [];
+  let snitt = 0;
+
+  for (const desk of sorted) {
+    if (current.length === 0 || Math.abs(langs(desk) - snitt) <= tvers(desk) * 0.6) {
+      current.push(desk);
+      snitt = current.reduce((sum, d) => sum + langs(d), 0) / current.length;
+    } else {
+      result.push(current);
+      current = [desk];
+      snitt = langs(desk);
+    }
+  }
+  if (current.length > 0) result.push(current);
+  return result;
+}
+
+/**
+ * Stiller de merkede pultene på linje, rad for rad («row») eller kolonne for
+ * kolonne («column»).
+ *
+ * Linja legges på *medianen* av midtpunktene, ikke på den øverste pulten. Én
+ * pult som står langt utenfor ville ellers dratt hele rekka med seg; med
+ * medianen blir de fleste stående, og det er den skjeve som flytter seg. En
+ * rad med bare én pult er allerede på linje med seg selv, og røres ikke.
+ */
+export function alignDesks(desks: Desk[], ids: Set<string>, kind: "row" | "column"): Desk[] {
+  const chosen = desks.filter((d) => ids.has(d.id));
+  if (chosen.length < 2) return desks;
+
+  const langs = kind === "row" ? midY : midX;
+  const tvers = kind === "row" ? deskHeight : deskWidth;
+  const placed = new Map<string, number>();
+
+  for (const band of bands(chosen, kind)) {
+    if (band.length < 2) continue;
+    // Linja skyves om den høyeste pulten i raden ellers ville havnet utenfor
+    // lerretet. Da flyttes hele raden, og den står fortsatt rett.
+    const line = Math.max(
+      median(band.map(langs)),
+      Math.max(...band.map((d) => tvers(d))) / 2
+    );
+    for (const desk of band) {
+      placed.set(desk.id, Math.round(line - tvers(desk) / 2));
+    }
+  }
+
+  return desks.map((d) => {
+    const value = placed.get(d.id);
+    if (value === undefined) return d;
+    return kind === "row" ? { ...d, y: value } : { ...d, x: value };
+  });
+}
+
+/**
+ * Gir de merkede pultene lik avstand — igjen rad for rad, så et felt med bord
+ * ikke blir flettet sammen til én lang trapp.
+ *
+ * Den første og den siste pulten i hver rad blir stående, og resten fordeles
+ * mellom dem. Avstanden måles mellom pultkantene og ikke mellom midtpunktene:
+ * klassene sitter i læringspar og treerbord om hverandre, og med midtpunkter
+ * ville en rad med begge deler sett skjev ut.
+ *
+ * Ligger pultene i raden allerede oppå hverandre, finnes det ingen jevn
+ * avstand å fordele — da settes de med vanlig pultavstand, og den siste skyves
+ * ut. Å regne videre på en negativ avstand ville lagt dem enda tettere.
  */
 export function distributeDesks(desks: Desk[], ids: Set<string>, axis: "x" | "y"): Desk[] {
   const chosen = desks.filter((d) => ids.has(d.id));
   if (chosen.length < 3) return desks;
 
-  const size = (d: Desk) => (axis === "x" ? deskWidth(d) : deskHeight(d));
+  const kind = axis === "x" ? "row" : "column";
+  const size = axis === "x" ? deskWidth : deskHeight;
   const start = (d: Desk) => (axis === "x" ? d.x : d.y);
-
-  const ordered = [...chosen].sort((a, b) => start(a) - start(b));
-  const last = ordered[ordered.length - 1];
-  const span = start(last) + size(last) - start(ordered[0]);
-  const used = ordered.reduce((sum, d) => sum + size(d), 0);
-  const gap = Math.max(0, (span - used) / (ordered.length - 1));
+  const normal = axis === "x" ? GAP_X : GAP_Y;
 
   const placed = new Map<string, number>();
-  let cursor = start(ordered[0]);
-  for (const desk of ordered) {
-    placed.set(desk.id, Math.max(0, Math.round(cursor)));
-    cursor += size(desk) + gap;
+
+  for (const band of bands(chosen, kind)) {
+    if (band.length < 3) continue;
+
+    const ordered = [...band].sort((a, b) => start(a) - start(b));
+    const last = ordered[ordered.length - 1];
+    const span = start(last) + size(last) - start(ordered[0]);
+    const used = ordered.reduce((sum, d) => sum + size(d), 0);
+    const gap = span >= used ? (span - used) / (ordered.length - 1) : normal;
+
+    let cursor = start(ordered[0]);
+    for (const desk of ordered) {
+      placed.set(desk.id, Math.max(0, Math.round(cursor)));
+      cursor += size(desk) + gap;
+    }
   }
 
   return desks.map((d) => {
@@ -278,6 +360,15 @@ export function distributeDesks(desks: Desk[], ids: Set<string>, axis: "x" | "y"
     if (value === undefined) return d;
     return axis === "x" ? { ...d, x: value } : { ...d, y: value };
   });
+}
+
+/**
+ * Om «Jevn avstand» har noe å gjøre: det trengs minst tre pulter i én og samme
+ * rad. To pulter har allerede jevn avstand seg imellom.
+ */
+export function canDistribute(desks: Desk[], ids: Set<string>, axis: "x" | "y"): boolean {
+  const chosen = desks.filter((d) => ids.has(d.id));
+  return bands(chosen, axis === "x" ? "row" : "column").some((b) => b.length >= 3);
 }
 
 /**

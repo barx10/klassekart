@@ -127,6 +127,14 @@ et pirkearbeid ingen orker.
 - **Avstanden i `distributeDesks` måles mellom pultkantene**, ikke mellom
   midtpunktene. Klassene sitter i læringspar og treerbord om hverandre, og med
   midtpunkter ville en rekke med begge deler sett skjev ut.
+- **`alignDesks` og `distributeDesks` jobber rad for rad**, ikke på utvalget
+  under ett. `bands()` deler de merkede pultene etter hvor de står. Ga vi alle
+  sammen samme y, ville et merket felt fått radene lagt rett oppå hverandre —
+  og en fordeling langs én akse ville flettet radene til en trapp.
+- **Linja legges på medianen av midtpunktene.** Ytterpunktet ville latt én
+  skjev pult dra hele rekka med seg; med medianen blir de fleste stående. Det
+  er midtpunktene og ikke kantene som rettes inn, så en firergruppe blant
+  topulter står midt i rekka.
 
 #### Låste plasser
 
