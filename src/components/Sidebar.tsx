@@ -69,12 +69,16 @@ function chartLabel(iso: string): string {
 }
 
 interface Props {
+  /** Skuffen er dratt fram på små skjermer. */
   open: boolean;
+  /** Menya er lagt bort på store skjermer, så klassekartet får hele vinduet. */
+  hidden: boolean;
   onClose: () => void;
+  onHide: () => void;
   onAbout: () => void;
 }
 
-export default function Sidebar({ open, onClose, onAbout }: Props) {
+export default function Sidebar({ open, hidden, onClose, onHide, onAbout }: Props) {
   const {
     classes,
     studentsByClass,
@@ -192,7 +196,7 @@ export default function Sidebar({ open, onClose, onAbout }: Props) {
         aria-label="Klasser og verktøy"
         className={`fixed inset-y-0 left-0 z-50 flex w-72 max-w-[85vw] shrink-0 flex-col overflow-y-auto border-r border-border bg-surface-raised transition-transform lg:sticky lg:top-0 lg:z-auto lg:h-dvh lg:max-w-none lg:translate-x-0 ${
           open ? "translate-x-0 shadow-2xl" : "-translate-x-full"
-        }`}
+        } ${hidden ? "lg:hidden" : ""}`}
       >
         <div className="flex items-center gap-2 border-b border-border px-4 py-3.5">
           <Link href="/" onClick={onClose} className="flex min-w-0 flex-1 items-center gap-2">
@@ -207,6 +211,18 @@ export default function Sidebar({ open, onClose, onAbout }: Props) {
           >
             <svg viewBox="0 0 20 20" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden>
               <path d="M5 5l10 10M15 5L5 15" strokeLinecap="round" />
+            </svg>
+          </button>
+          {/* På store skjermer legges menya bort i stedet — kartet får hele vinduet. */}
+          <button
+            type="button"
+            onClick={onHide}
+            aria-label="Skjul meny"
+            title="Skjul meny"
+            className="hidden rounded-md p-1.5 text-subtle hover:bg-background hover:text-foreground lg:inline-flex"
+          >
+            <svg viewBox="0 0 20 20" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden>
+              <path d="M11 5L6 10l5 5M15 4v12" strokeLinecap="round" strokeLinejoin="round" />
             </svg>
           </button>
         </div>
