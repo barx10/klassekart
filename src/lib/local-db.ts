@@ -24,8 +24,10 @@ const KEY = "state";
  *
  * 2: lista over kontaktlærere kom til. Kopier fra versjon 1 leses fortsatt —
  *    `normalize()` bygger lista av navnene som står på elevene.
+ * 3: klassene fikk `locked_seats` — elever læreren har låst til et sete. Eldre
+ *    kopier mangler feltet, og leses som «ingen låser» (`validLocks`).
  */
-export const BACKUP_VERSION = 2;
+export const BACKUP_VERSION = 3;
 
 export interface LocalData {
   version: number;

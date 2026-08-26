@@ -26,6 +26,21 @@ export interface Desk {
  */
 export type DeskAssignments = Record<string, (string | null)[]>;
 
+/**
+ * Et sete en elev er låst til. Låste elever blir stående når et nytt
+ * klassekart genereres, og kan ikke dras vekk før låsen er tatt av.
+ */
+export interface SeatLock {
+  desk_id: string;
+  index: number;
+}
+
+/**
+ * Låsene i en klasse, med elev-id som nøkkel. Én elev kan bare være låst ett
+ * sted, og oppslaget «er denne eleven låst?» er det UI-et gjør oftest.
+ */
+export type SeatLocks = Record<string, SeatLock>;
+
 export interface SchoolClass {
   id: string;
   name: string;
@@ -34,6 +49,8 @@ export interface SchoolClass {
   desks: Desk[];
   /** Antall kolonner "Rydd opp" bruker når pultene stilles opp i rutenett. */
   desk_cols: number;
+  /** Elever som er låst til et bestemt sete. Hører til klasserommet, ikke kartet. */
+  locked_seats: SeatLocks;
   created_at: string;
 }
 

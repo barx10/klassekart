@@ -6,6 +6,7 @@ import {
   addColumn,
   addDesk,
   addRow,
+  changeDeskSeats,
   desksOverlap,
   removeColumn,
   removeRow,
@@ -13,7 +14,6 @@ import {
   rowCount,
   setDeskName,
   setDeskSize,
-  setDeskSeats,
   tidyDesks,
   totalSeats,
 } from "@/lib/classroom";
@@ -84,6 +84,8 @@ export default function ClassDetailPage() {
     deskCols,
     applyDesks,
     assignments,
+    locks,
+    toggleLock,
     charts,
     activeChartId,
     moveStudent,
@@ -275,15 +277,22 @@ export default function ClassDetailPage() {
         desks={desks}
         assignments={assignments}
         studentsById={studentsById}
+        locks={locks}
         onDesksChange={(next, persist) => applyDesks(next, undefined, persist)}
-        onRemoveDesk={(deskId) => applyDesks(desks.filter((d) => d.id !== deskId))}
-        onSeatsChange={(deskId, next) => applyDesks(setDeskSeats(desks, deskId, next))}
+        onRemoveDesks={(deskIds) => {
+          const remove = new Set(deskIds);
+          applyDesks(desks.filter((d) => !remove.has(d.id)));
+        }}
+        onSeatsChange={(deskIds, delta) =>
+          applyDesks(changeDeskSeats(desks, new Set(deskIds), delta))
+        }
         onRenameDesk={(deskId, name) => applyDesks(setDeskName(desks, deskId, name))}
         onResizeDesk={(deskId, w, h, persist) =>
           applyDesks(setDeskSize(desks, deskId, w, h), undefined, persist)
         }
         onResetDeskSize={(deskId) => applyDesks(resetDeskSize(desks, deskId))}
         onMoveStudent={moveStudent}
+        onToggleLock={toggleLock}
       />
     </div>
   );

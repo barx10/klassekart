@@ -47,11 +47,17 @@ function groupCost(group: string[], historyMap: Map<string, number>): number {
  * elever, legges det til topulter på slutten; er det flere, blir plassene
  * stående tomme. Byttene under herdingen holder gruppestørrelsene uendret, så
  * ingen pult blir overfylt.
+ *
+ * `pinned` er elever læreren har låst til en pult, som elev-id -> pultens
+ * plass i `capacities`. De settes ved pulten sin før herdingen starter og
+ * holdes utenfor byttene. Det gjør låsen absolutt: en straff i kostfunksjonen
+ * ville bare gjort det dyrt å flytte dem, ikke umulig.
  */
 export function generateSeatingChart(
   students: Student[],
   capacities: number[],
-  historyMap: Map<string, number>
+  historyMap: Map<string, number>,
+  pinned: Map<string, number> = new Map()
 ): SeatingGroups {
   if (students.length === 0) return [];
 
@@ -66,9 +72,26 @@ export function generateSeatingChart(
 
   const numGroups = caps.length;
   const groups: string[][] = caps.map(() => []);
-  let deskIndex = 0;
+
+  // Låste elever først, så de andre fyller det som er igjen. Er en pult låst
+  // fullere enn den har plasser, blir de overtallige med i den vanlige
+  // fordelingen — ellers ville de falt ut av kartet.
+  const locked = new Set<string>();
+  const free: string[] = [];
   for (const id of ids) {
-    while (groups[deskIndex].length >= caps[deskIndex]) deskIndex++;
+    const deskIndex = pinned.get(id);
+    if (deskIndex !== undefined && deskIndex < numGroups && groups[deskIndex].length < caps[deskIndex]) {
+      groups[deskIndex].push(id);
+      locked.add(id);
+    } else {
+      free.push(id);
+    }
+  }
+
+  let deskIndex = 0;
+  for (const id of free) {
+    while (deskIndex < numGroups && groups[deskIndex].length >= caps[deskIndex]) deskIndex++;
+    if (deskIndex >= numGroups) break;
     groups[deskIndex].push(id);
   }
 
@@ -82,6 +105,7 @@ export function generateSeatingChart(
 
     const i1 = Math.floor(Math.random() * groups[g1].length);
     const i2 = Math.floor(Math.random() * groups[g2].length);
+    if (locked.has(groups[g1][i1]) || locked.has(groups[g2][i2])) continue;
 
     const before = groupCost(groups[g1], historyMap) + groupCost(groups[g2], historyMap);
 
