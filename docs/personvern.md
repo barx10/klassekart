@@ -257,7 +257,10 @@ Det du ikke lagrer, trenger du ikke sikre, dokumentere eller slette.
   opplysningen heller ikke.
 - **Fornavn holder.** Eventuelt fornavn + forbokstav der to elever heter det
   samme. Et klassekart trenger ikke fullt navn.
-- **Kontaktlærer** kan være initialer.
+- **Kontaktlærer** kan være initialer. Navnene står nå i en egen liste
+  (`contact_teachers`) og ikke bare på hver elev, så de er også med i
+  sikkerhetskopien — men de er navn på voksne kolleger, ikke på barn, og
+  ligger som alt annet bare i denne nettleseren.
 - **Par-historikk** nullstilles fra *Oversikt over par → Nullstill
   historikken* *(bygget)*. Gjør det ved skoleårets slutt – tellingene er bare
   interessante for inneværende klasse.

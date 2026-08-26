@@ -61,3 +61,19 @@ export interface PairHistoryRow {
   times_together: number;
   last_seated_at: string | null;
 }
+
+/**
+ * En kontaktlærer læreren har lagt inn. Lista finnes for at kontaktlærer på
+ * en elev skal velges fra faste navn og ikke skrives fritt — ellers blir
+ * «Kari Nordmann» og «kari nordmann» to forskjellige lærere, og oversikten
+ * over hvem som har hvilke elever sprekker.
+ *
+ * Elevene peker på navnet, ikke id-en. Det gjør at navn som alt sto på
+ * elevene virker med én gang; til gjengjeld må elevene skrives om når en
+ * kontaktlærer får nytt navn.
+ */
+export interface ContactTeacher {
+  id: string;
+  name: string;
+  created_at: string;
+}

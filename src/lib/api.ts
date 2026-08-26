@@ -1,9 +1,10 @@
 "use client";
 
-import { mutate, newId, read, type LocalData } from "./local-db";
+import { mutate, newId, read, teacherKey, type LocalData } from "./local-db";
 import { ensureCapacity, makeGrid } from "./classroom";
 import { buildHistoryMap, countNewPairs, generateSeatingChart, pairsFromGroups } from "./seating";
 import type {
+  ContactTeacher,
   Desk,
   DeskAssignments,
   Gender,
@@ -171,6 +172,76 @@ export async function deleteStudent(id: string): Promise<void> {
   await mutate((data) => {
     data.students = data.students.filter((s) => s.id !== id);
     data.pairs = data.pairs.filter((p) => p.student_a_id !== id && p.student_b_id !== id);
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Kontaktlærere
+// ---------------------------------------------------------------------------
+
+export async function fetchContactTeachers(): Promise<ContactTeacher[]> {
+  return read((data) => [...data.contact_teachers].sort((a, b) => a.name.localeCompare(b.name, "no")));
+}
+
+export async function addContactTeacher(name: string): Promise<ContactTeacher> {
+  const trimmed = name.trim();
+  if (!trimmed) throw new Error("Kontaktlæreren må ha et navn.");
+
+  return mutate((data) => {
+    if (data.contact_teachers.some((t) => teacherKey(t.name) === teacherKey(trimmed))) {
+      throw new Error(`«${trimmed}» står i lista fra før.`);
+    }
+    const created: ContactTeacher = {
+      id: newId(),
+      name: trimmed,
+      created_at: new Date().toISOString(),
+    };
+    data.contact_teachers.push(created);
+    return created;
+  });
+}
+
+/**
+ * Gir kontaktlæreren nytt navn. Elevene peker på navnet, så de skrives om i
+ * samme endring — ellers ville de blitt hengende igjen hos en lærer som ikke
+ * finnes lenger.
+ */
+export async function renameContactTeacher(id: string, name: string): Promise<ContactTeacher> {
+  const trimmed = name.trim();
+  if (!trimmed) throw new Error("Kontaktlæreren må ha et navn.");
+
+  return mutate((data) => {
+    const found = data.contact_teachers.find((t) => t.id === id);
+    if (!found) throw new Error("Fant ikke kontaktlæreren.");
+
+    const opptatt = data.contact_teachers.some(
+      (t) => t.id !== id && teacherKey(t.name) === teacherKey(trimmed)
+    );
+    if (opptatt) throw new Error(`«${trimmed}» står i lista fra før.`);
+
+    const gammelt = teacherKey(found.name);
+    found.name = trimmed;
+    for (const student of data.students) {
+      if (student.contact_teacher && teacherKey(student.contact_teacher) === gammelt) {
+        student.contact_teacher = trimmed;
+      }
+    }
+    return found;
+  });
+}
+
+/** Fjerner kontaktlæreren, og lar elevene stå igjen uten en. */
+export async function deleteContactTeacher(id: string): Promise<void> {
+  await mutate((data) => {
+    const found = data.contact_teachers.find((t) => t.id === id);
+    if (!found) return;
+    const nokkel = teacherKey(found.name);
+    data.contact_teachers = data.contact_teachers.filter((t) => t.id !== id);
+    for (const student of data.students) {
+      if (student.contact_teacher && teacherKey(student.contact_teacher) === nokkel) {
+        student.contact_teacher = null;
+      }
+    }
   });
 }
 

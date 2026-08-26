@@ -11,8 +11,11 @@ import {
 } from "react";
 import { usePathname } from "next/navigation";
 import {
+  addContactTeacher as apiAddContactTeacher,
   addStudents as apiAddStudents,
   createClass as apiCreateClass,
+  deleteContactTeacher as apiDeleteContactTeacher,
+  renameContactTeacher as apiRenameContactTeacher,
   deleteClass as apiDeleteClass,
   deleteChart as apiDeleteChart,
   deleteStudent as apiDeleteStudent,
@@ -20,6 +23,7 @@ import {
   adjustPairHistory,
   fetchAllStudents,
   fetchChartHistory,
+  fetchContactTeachers,
   fetchClasses,
   fetchPairHistory,
   resetPairHistory as apiResetPairHistory,
@@ -30,6 +34,7 @@ import {
 import { clampSeats, normalizeDesks } from "./classroom";
 import { pairsFromAssignments } from "./seating";
 import type {
+  ContactTeacher,
   Desk,
   DeskAssignments,
   Gender,
@@ -51,6 +56,12 @@ interface AppDataValue {
   addStudents: (classId: string, names: string[], gender: Gender | null, contactTeacher: string | null) => Promise<void>;
   updateStudent: (id: string, fields: Partial<Pick<Student, "name" | "gender" | "contact_teacher">>) => Promise<void>;
   removeStudent: (id: string) => Promise<void>;
+
+  /** Kontaktlærerne, på tvers av klasser. Elevene peker på navnet. */
+  contactTeachers: ContactTeacher[];
+  addContactTeacher: (name: string) => Promise<void>;
+  renameContactTeacher: (id: string, name: string) => Promise<void>;
+  removeContactTeacher: (id: string) => Promise<void>;
 
   /** Klassen som vises i klasserommet nå (utledet fra adressen). */
   activeClass: SchoolClass | null;
@@ -91,6 +102,7 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
 
   const [classes, setClasses] = useState<SchoolClass[]>([]);
   const [students, setStudents] = useState<Student[]>([]);
+  const [contactTeachers, setContactTeachers] = useState<ContactTeacher[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -111,10 +123,13 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
   // --- Globale data: klasser og elever ------------------------------------
   const loadAll = useCallback(
     () =>
-      Promise.all([fetchClasses(), fetchAllStudents()]).then(([cls, studs]) => {
-        setClasses(cls);
-        setStudents(studs);
-      }),
+      Promise.all([fetchClasses(), fetchAllStudents(), fetchContactTeachers()]).then(
+        ([cls, studs, teachers]) => {
+          setClasses(cls);
+          setStudents(studs);
+          setContactTeachers(teachers);
+        }
+      ),
     []
   );
 
@@ -261,6 +276,41 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
     setStudents((prev) => prev.filter((s) => s.id !== id));
   }, []);
 
+  const addContactTeacher = useCallback(async (name: string) => {
+    const created = await apiAddContactTeacher(name);
+    setContactTeachers((prev) =>
+      [...prev, created].sort((a, b) => a.name.localeCompare(b.name, "no"))
+    );
+  }, []);
+
+  /**
+   * Å gi en kontaktlærer nytt navn eller fjerne hen skriver også om elevene,
+   * siden de peker på navnet. Begge lister leses derfor inn på nytt — hele
+   * datasettet er noen kilobyte, så det er billigere enn å speile endringen
+   * to steder og risikere at de sklir fra hverandre.
+   */
+  const refreshTeachers = useCallback(async () => {
+    const [teachers, studs] = await Promise.all([fetchContactTeachers(), fetchAllStudents()]);
+    setContactTeachers(teachers);
+    setStudents(studs);
+  }, []);
+
+  const renameContactTeacher = useCallback(
+    async (id: string, name: string) => {
+      await apiRenameContactTeacher(id, name);
+      await refreshTeachers();
+    },
+    [refreshTeachers]
+  );
+
+  const removeContactTeacher = useCallback(
+    async (id: string) => {
+      await apiDeleteContactTeacher(id);
+      await refreshTeachers();
+    },
+    [refreshTeachers]
+  );
+
   const showChart = useCallback((chartId: string) => setActiveChartId(chartId), []);
 
   const resetPairHistory = useCallback(async () => {
@@ -384,6 +434,10 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
       addStudents,
       updateStudent,
       removeStudent,
+      contactTeachers,
+      addContactTeacher,
+      renameContactTeacher,
+      removeContactTeacher,
       activeClass,
       activeStudents,
       desks,
@@ -413,6 +467,10 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
       addStudents,
       updateStudent,
       removeStudent,
+      contactTeachers,
+      addContactTeacher,
+      renameContactTeacher,
+      removeContactTeacher,
       activeClass,
       activeStudents,
       desks,

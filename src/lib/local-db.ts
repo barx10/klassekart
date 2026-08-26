@@ -1,6 +1,6 @@
 "use client";
 
-import type { PairHistoryRow, SchoolClass, SeatingChart, Student } from "./types";
+import type { ContactTeacher, PairHistoryRow, SchoolClass, SeatingChart, Student } from "./types";
 
 /**
  * All lagring skjer i nettleseren, i IndexedDB. Ingenting sendes til en
@@ -19,8 +19,13 @@ const DB_VERSION = 1;
 const STORE = "data";
 const KEY = "state";
 
-/** Versjonen som skrives i sikkerhetskopier, så eldre filer kan leses senere. */
-export const BACKUP_VERSION = 1;
+/**
+ * Versjonen som skrives i sikkerhetskopier, så eldre filer kan leses senere.
+ *
+ * 2: lista over kontaktlærere kom til. Kopier fra versjon 1 leses fortsatt —
+ *    `normalize()` bygger lista av navnene som står på elevene.
+ */
+export const BACKUP_VERSION = 2;
 
 export interface LocalData {
   version: number;
@@ -28,10 +33,23 @@ export interface LocalData {
   students: Student[];
   charts: SeatingChart[];
   pairs: PairHistoryRow[];
+  contact_teachers: ContactTeacher[];
 }
 
 export function emptyData(): LocalData {
-  return { version: BACKUP_VERSION, classes: [], students: [], charts: [], pairs: [] };
+  return {
+    version: BACKUP_VERSION,
+    classes: [],
+    students: [],
+    charts: [],
+    pairs: [],
+    contact_teachers: [],
+  };
+}
+
+/** Samme navn skrevet med ulike store bokstaver eller mellomrom er samme lærer. */
+export function teacherKey(name: string): string {
+  return name.trim().toLocaleLowerCase("no");
 }
 
 export function newId(): string {
@@ -62,15 +80,39 @@ function openDb(): Promise<IDBDatabase> {
   });
 }
 
+/**
+ * Kontaktlærerne som allerede står på elevene og klassene. Brukes når en
+ * lagring fra versjon 1 leses: der fantes ingen liste, og navnene som er
+ * skrevet inn er det eneste vi vet om hvem lærerne er.
+ */
+function contactTeachersFromNames(classes: SchoolClass[], students: Student[]): ContactTeacher[] {
+  const sett = new Map<string, ContactTeacher>();
+  const legg = (name: string | null | undefined, created_at: string) => {
+    const trimmed = name?.trim();
+    if (!trimmed || sett.has(teacherKey(trimmed))) return;
+    sett.set(teacherKey(trimmed), { id: newId(), name: trimmed, created_at });
+  };
+
+  for (const student of students) legg(student.contact_teacher, student.created_at);
+  // Klassens standard kan være satt uten at noen elev har fått den ennå.
+  for (const klasse of classes) legg(klasse.default_contact_teacher, klasse.created_at);
+  return [...sett.values()];
+}
+
 /** Fyller inn det som mangler, så en tom eller eldre lagring ikke krasjer appen. */
 function normalize(value: unknown): LocalData {
   const raw = (value ?? {}) as Partial<LocalData>;
+  const classes = Array.isArray(raw.classes) ? raw.classes : [];
+  const students = Array.isArray(raw.students) ? raw.students : [];
   return {
     version: typeof raw.version === "number" ? raw.version : BACKUP_VERSION,
-    classes: Array.isArray(raw.classes) ? raw.classes : [],
-    students: Array.isArray(raw.students) ? raw.students : [],
+    classes,
+    students,
     charts: Array.isArray(raw.charts) ? raw.charts : [],
     pairs: Array.isArray(raw.pairs) ? raw.pairs : [],
+    contact_teachers: Array.isArray(raw.contact_teachers)
+      ? raw.contact_teachers
+      : contactTeachersFromNames(classes, students),
   };
 }
 
@@ -177,5 +219,6 @@ export function replaceAll(data: LocalData): Promise<void> {
     current.students = data.students;
     current.charts = data.charts;
     current.pairs = data.pairs;
+    current.contact_teachers = data.contact_teachers;
   });
 }
