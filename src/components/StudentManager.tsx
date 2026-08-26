@@ -17,7 +17,7 @@ interface Props {
 const FILTER_THRESHOLD = 12;
 
 export default function StudentManager({ classId, students, defaultContactTeacher }: Props) {
-  const { addStudents, updateStudent, removeStudent, setError } = useAppData();
+  const { addStudents, updateStudent, removeStudent, contactTeachers, setError } = useAppData();
   const [bulkNames, setBulkNames] = useState("");
   const [bulkGender, setBulkGender] = useState<Gender | null>(null);
   const [bulkContact, setBulkContact] = useState(defaultContactTeacher ?? "");
@@ -27,6 +27,9 @@ export default function StudentManager({ classId, students, defaultContactTeache
   const [pendingDelete, setPendingDelete] = useState<Student | null>(null);
 
   const pendingCount = bulkNames.split("\n").filter((n) => n.trim()).length;
+
+  /** Navnene å velge mellom. Nye legges inn under «Kontaktlærere» i menyen. */
+  const teacherNames = useMemo(() => contactTeachers.map((t) => t.name), [contactTeachers]);
 
   const visible = useMemo(() => {
     const q = filter.trim().toLowerCase();
@@ -112,13 +115,22 @@ export default function StudentManager({ classId, students, defaultContactTeache
           <label className="sr-only" htmlFor="nye-elever-kontakt">
             Kontaktlærer
           </label>
-          <input
+          <select
             id="nye-elever-kontakt"
-            value={bulkContact}
+            value={teacherNames.includes(bulkContact) ? bulkContact : ""}
             onChange={(e) => setBulkContact(e.target.value)}
-            placeholder="Kontaktlærer"
+            disabled={teacherNames.length === 0}
             className={inputClassSm}
-          />
+          >
+            <option value="">
+              {teacherNames.length === 0 ? "Ingen kontaktlærere ennå" : "Kontaktlærer"}
+            </option>
+            {teacherNames.map((navn) => (
+              <option key={navn} value={navn}>
+                {navn}
+              </option>
+            ))}
+          </select>
         </div>
         <button type="submit" disabled={adding || pendingCount === 0} className={primaryButton("sm")}>
           {adding
@@ -130,7 +142,7 @@ export default function StudentManager({ classId, students, defaultContactTeache
         <p className="text-[11px] text-subtle">
           Kjønn og kontaktlærer gjelder alle i denne bunken. Du kan endre hver elev etterpå ved å
           klikke på navnet. Kjønn er valgfritt — det brukes bare til fargeprikken, ikke til
-          fordelingen.
+          fordelingen. Kontaktlærere legges inn under «Kontaktlærere» i menyen.
         </p>
       </form>
 
@@ -225,19 +237,30 @@ export default function StudentManager({ classId, students, defaultContactTeache
                     <label className="sr-only" htmlFor={`kontakt-${s.id}`}>
                       Kontaktlærer
                     </label>
-                    <input
+                    <select
                       id={`kontakt-${s.id}`}
-                      defaultValue={s.contact_teacher ?? ""}
-                      placeholder="Kontaktlærer"
-                      onKeyDown={(e) => {
-                        if (e.key === "Enter") e.currentTarget.blur();
-                      }}
-                      onBlur={(e) => {
-                        const v = e.target.value.trim() || null;
+                      value={s.contact_teacher ?? ""}
+                      onChange={(e) => {
+                        const v = e.target.value || null;
                         if (v !== s.contact_teacher) patch(s, { contact_teacher: v });
                       }}
                       className={inputClassSm}
-                    />
+                    >
+                      <option value="">
+                        {teacherNames.length === 0 ? "Ingen kontaktlærere ennå" : "Uten kontaktlærer"}
+                      </option>
+                      {teacherNames.map((navn) => (
+                        <option key={navn} value={navn}>
+                          {navn}
+                        </option>
+                      ))}
+                      {/* Et navn som er blitt borte fra lista skal ikke falle
+                          ut av nedtrekket, ellers ville det sett ut som om
+                          eleven aldri hadde en kontaktlærer. */}
+                      {s.contact_teacher && !teacherNames.includes(s.contact_teacher) && (
+                        <option value={s.contact_teacher}>{s.contact_teacher}</option>
+                      )}
+                    </select>
                     <button
                       type="button"
                       onClick={() => setPendingDelete(s)}

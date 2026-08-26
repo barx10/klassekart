@@ -51,7 +51,8 @@ src/
     ClassroomCanvas.tsx         Klasserommet: pulter, draging, seter
     StudentManager.tsx          Legg til/rediger elever (kompakt, for menyen)
     PairHeatmap.tsx             Varmekart over hvem som har sittet sammen
-    Modal.tsx                   Brukes til par-oversikten
+    ContactTeachers.tsx         Kontaktlærerne, og elevene hver av dem har
+    Modal.tsx                   Brukes til par-oversikten og kontaktlærerne
   lib/
     app-data.tsx                All delt tilstand (se under)
     classroom.ts                Pult-geometri: bredde/høyde, rutenett, rydd opp
@@ -126,6 +127,23 @@ Formatet har et `version`-felt, og `normalize()` fyller inn det som mangler.
 Endrer du formatet, hev `BACKUP_VERSION` og la eldre sikkerhetskopier kunne
 leses — brukeren kan ha en fil fra i fjor. Nye pult-egenskaper hører fortsatt
 hjemme inne i `desks`; `normalizeDesks()` fyller inn standardverdier.
+
+Versjon 2 la til `contact_teachers`. En kopi fra versjon 1 har ikke feltet, og
+da bygges lista av navnene som står på elevene og klassene — det er alt vi vet
+om hvem lærerne er.
+
+### Kontaktlærere
+
+`contact_teachers` er en flat liste med navn, felles for alle klasser. Elevens
+`contact_teacher` peker på **navnet**, ikke på en id. Det gjør at navn som alt
+sto på elevene virker uten migrering; til gjengjeld må `renameContactTeacher`
+skrive om elevene i samme endring, ellers blir de hengende igjen hos en lærer
+som ikke finnes.
+
+Navn sammenlignes alltid gjennom `teacherKey()` (trimmet, små bokstaver). Uten
+den ville «Kari Nordmann» og «kari nordmann» vært to lærere, og oversikten over
+hvem som har hvilke elever sprukket. Derfor er feltet i elevvisningen også en
+nedtrekksliste og ikke fritekst.
 
 ## Arbeidsflyt
 

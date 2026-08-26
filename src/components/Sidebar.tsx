@@ -7,6 +7,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { useAppData } from "@/lib/app-data";
 import StudentManager from "./StudentManager";
 import PairHeatmap from "./PairHeatmap";
+import ContactTeachers from "./ContactTeachers";
 import Modal from "./Modal";
 import ConfirmDialog from "./ConfirmDialog";
 import NewClassForm from "./NewClassForm";
@@ -92,6 +93,8 @@ export default function Sidebar({ open, hidden, onClose, onHide, onAbout }: Prop
     deleteChart,
     pairHistory,
     resetPairHistory,
+    contactTeachers,
+    removeContactTeacher,
     setError,
     reload,
   } = useAppData();
@@ -101,6 +104,10 @@ export default function Sidebar({ open, hidden, onClose, onHide, onAbout }: Prop
 
   const [section, setSection] = useState<Section>(null);
   const [showHeatmap, setShowHeatmap] = useState(false);
+  const [showTeachers, setShowTeachers] = useState(false);
+  const [pendingTeacherDelete, setPendingTeacherDelete] = useState<{ id: string; name: string } | null>(
+    null
+  );
   const [showForm, setShowForm] = useState(false);
   const [pendingDelete, setPendingDelete] = useState<{ id: string; name: string } | null>(null);
   const [pendingChartDelete, setPendingChartDelete] = useState<{ id: string; label: string } | null>(
@@ -108,6 +115,17 @@ export default function Sidebar({ open, hidden, onClose, onHide, onAbout }: Prop
   );
   const [pendingImport, setPendingImport] = useState<{ data: LocalData; name: string } | null>(null);
   const [confirmReset, setConfirmReset] = useState(false);
+
+  async function doRemoveTeacher() {
+    if (!pendingTeacherDelete) return;
+    const { id } = pendingTeacherDelete;
+    setPendingTeacherDelete(null);
+    try {
+      await removeContactTeacher(id);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    }
+  }
 
   async function doResetPairs() {
     setConfirmReset(false);
@@ -304,6 +322,22 @@ export default function Sidebar({ open, hidden, onClose, onHide, onAbout }: Prop
           )}
         </nav>
 
+        {/* Kontaktlærerne går på tvers av klassene, så knappen står utenfor
+            delen som hører til klassen som vises. */}
+        <button
+          type="button"
+          onClick={() => setShowTeachers(true)}
+          className="mt-1 flex w-full items-center gap-1.5 rounded-md px-4 py-2 text-left text-sm font-medium hover:bg-background"
+        >
+          <svg viewBox="0 0 16 16" className="h-3.5 w-3.5 shrink-0 text-subtle" fill="none" stroke="currentColor" strokeWidth="1.5" aria-hidden>
+            <path d="M6 7.5a2.25 2.25 0 100-4.5 2.25 2.25 0 000 4.5z M1.5 13.5c0-2.2 2-3.5 4.5-3.5s4.5 1.3 4.5 3.5 M11 3.3a2.25 2.25 0 010 4.4 M12.2 10.2c1.4.5 2.3 1.5 2.3 3.3" strokeLinecap="round" strokeLinejoin="round" />
+          </svg>
+          <span className="flex-1">Kontaktlærere</span>
+          {contactTeachers.length > 0 && (
+            <span className="shrink-0 text-xs text-subtle tabular-nums">{contactTeachers.length}</span>
+          )}
+        </button>
+
         {/* --- Verktøy for klassen som vises --- */}
         {activeClass && (
           <div className="mt-4 border-t border-border px-2 pt-3 pb-4">
@@ -476,6 +510,53 @@ export default function Sidebar({ open, hidden, onClose, onHide, onAbout }: Prop
         >
           <PairHeatmap students={activeStudents} historyRows={pairHistory} />
         </Modal>
+      )}
+
+      {showTeachers && (
+        <Modal
+          title="Kontaktlærere"
+          description="Legg inn kontaktlærerne, og velg et navn for å se elevene deres."
+          size="lg"
+          onClose={() => setShowTeachers(false)}
+          footer={
+            <button
+              type="button"
+              onClick={() => setShowTeachers(false)}
+              className={secondaryButton()}
+            >
+              Lukk
+            </button>
+          }
+        >
+          <ContactTeachers
+            onNavigate={() => {
+              setShowTeachers(false);
+              onClose();
+            }}
+            onRequestDelete={(teacher) => {
+              // Samme grunn som ved nullstillingen under: bekreftelsen får stå
+              // alene, ellers slåss to dialoger om fokuset.
+              setShowTeachers(false);
+              setPendingTeacherDelete(teacher);
+            }}
+          />
+        </Modal>
+      )}
+
+      {pendingTeacherDelete && (
+        <ConfirmDialog
+          title={`Fjerne ${pendingTeacherDelete.name}?`}
+          body={
+            <>
+              Elevene blir stående, men uten kontaktlærer.{" "}
+              <strong className="text-foreground">{pendingTeacherDelete.name}</strong> kan legges
+              inn igjen senere.
+            </>
+          }
+          confirmLabel="Fjern"
+          onConfirm={doRemoveTeacher}
+          onCancel={() => setPendingTeacherDelete(null)}
+        />
       )}
 
       {confirmReset && activeClass && (
