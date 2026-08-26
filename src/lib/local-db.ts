@@ -1,6 +1,13 @@
 "use client";
 
-import type { ContactTeacher, PairHistoryRow, SchoolClass, SeatingChart, Student } from "./types";
+import type {
+  ApartPair,
+  ContactTeacher,
+  PairHistoryRow,
+  SchoolClass,
+  SeatingChart,
+  Student,
+} from "./types";
 
 /**
  * All lagring skjer i nettleseren, i IndexedDB. Ingenting sendes til en
@@ -26,8 +33,10 @@ const KEY = "state";
  *    `normalize()` bygger lista av navnene som står på elevene.
  * 3: klassene fikk `locked_seats` — elever læreren har låst til et sete. Eldre
  *    kopier mangler feltet, og leses som «ingen låser» (`validLocks`).
+ * 4: `apart_pairs` kom til — elevpar som ikke skal sitte ved samme bord. Eldre
+ *    kopier mangler lista, og leses som «ingen regler».
  */
-export const BACKUP_VERSION = 3;
+export const BACKUP_VERSION = 4;
 
 export interface LocalData {
   version: number;
@@ -36,6 +45,7 @@ export interface LocalData {
   charts: SeatingChart[];
   pairs: PairHistoryRow[];
   contact_teachers: ContactTeacher[];
+  apart_pairs: ApartPair[];
 }
 
 export function emptyData(): LocalData {
@@ -46,6 +56,7 @@ export function emptyData(): LocalData {
     charts: [],
     pairs: [],
     contact_teachers: [],
+    apart_pairs: [],
   };
 }
 
@@ -115,6 +126,7 @@ function normalize(value: unknown): LocalData {
     contact_teachers: Array.isArray(raw.contact_teachers)
       ? raw.contact_teachers
       : contactTeachersFromNames(classes, students),
+    apart_pairs: Array.isArray(raw.apart_pairs) ? raw.apart_pairs : [],
   };
 }
 

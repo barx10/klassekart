@@ -7,6 +7,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { useAppData } from "@/lib/app-data";
 import StudentManager from "./StudentManager";
 import PairHeatmap from "./PairHeatmap";
+import ApartPairs from "./ApartPairs";
 import ContactTeachers from "./ContactTeachers";
 import HelpTip from "./HelpTip";
 import Modal from "./Modal";
@@ -95,6 +96,7 @@ export default function Sidebar({ open, hidden, onClose, onHide, onAbout }: Prop
     deleteChart,
     pairHistory,
     resetPairHistory,
+    apartPairs,
     contactTeachers,
     removeContactTeacher,
     setError,
@@ -106,6 +108,7 @@ export default function Sidebar({ open, hidden, onClose, onHide, onAbout }: Prop
 
   const [section, setSection] = useState<Section>(null);
   const [showHeatmap, setShowHeatmap] = useState(false);
+  const [showApart, setShowApart] = useState(false);
   const [showTeachers, setShowTeachers] = useState(false);
   const [pendingTeacherDelete, setPendingTeacherDelete] = useState<{ id: string; name: string } | null>(
     null
@@ -435,6 +438,24 @@ export default function Sidebar({ open, hidden, onClose, onHide, onAbout }: Prop
               </svg>
               <span className="flex-1">Oversikt over par</span>
             </button>
+
+            <button
+              type="button"
+              onClick={() => setShowApart(true)}
+              className="flex w-full items-center gap-1.5 rounded-md px-2 py-2 text-left text-sm font-medium hover:bg-background"
+            >
+              <svg viewBox="0 0 16 16" className="h-3.5 w-3.5 shrink-0 text-subtle" fill="none" stroke="currentColor" strokeWidth="1.5" aria-hidden>
+                <circle cx="4.5" cy="6" r="2.2" />
+                <circle cx="11.5" cy="6" r="2.2" />
+                <path d="M6.5 12.5h3" strokeLinecap="round" strokeDasharray="1 2" />
+              </svg>
+              <span className="flex-1">Skal ikke sitte sammen</span>
+              {apartPairs.length > 0 && (
+                <span className="rounded-full bg-background px-1.5 text-[11px] tabular-nums text-muted">
+                  {apartPairs.length}
+                </span>
+              )}
+            </button>
           </div>
         )}
 
@@ -521,6 +542,25 @@ export default function Sidebar({ open, hidden, onClose, onHide, onAbout }: Prop
           }
         >
           <PairHeatmap students={activeStudents} historyRows={pairHistory} />
+        </Modal>
+      )}
+
+      {showApart && activeClass && (
+        <Modal
+          title={`Skal ikke sitte sammen – ${activeClass.name}`}
+          description="Elevpar som ikke skal settes ved samme bord når du genererer et klassekart."
+          onClose={() => setShowApart(false)}
+          footer={
+            <button
+              type="button"
+              onClick={() => setShowApart(false)}
+              className={secondaryButton()}
+            >
+              Lukk
+            </button>
+          }
+        >
+          <ApartPairs />
         </Modal>
       )}
 

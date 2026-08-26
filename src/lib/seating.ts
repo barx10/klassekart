@@ -26,14 +26,56 @@ function shuffle<T>(arr: T[]): T[] {
   return copy;
 }
 
-function groupCost(group: string[], historyMap: Map<string, number>): number {
+/**
+ * Hva det koster å sette to elever som ikke skal sitte sammen ved samme bord.
+ *
+ * Historikken teller hvor mange ganger et par har sittet sammen — et tosifret
+ * tall i løpet av et skoleår. Tusen gjør regelen tyngre enn all historikken til
+ * sammen, uansett hvor lenge klassen har vært i gang, så algoritmen bryter den
+ * bare når den ikke har noe valg.
+ */
+const APART_PENALTY = 1000;
+
+/**
+ * Hvor mange ganger fordelingen prøves på nytt når reglene brytes. Et brudd i
+ * første forsøk er som regel uflaks i utgangsstillingen og ikke en umulig
+ * regel; noen forsøk til koster millisekunder, og gjør «kunne ikke oppfylles»
+ * til noe læreren kan stole på.
+ */
+const APART_ATTEMPTS = 6;
+
+export interface SeatingOptions {
+  /**
+   * Elever læreren har låst til en pult, som elev-id -> pultens plass i
+   * `capacities`. De settes ved pulten sin før herdingen og holdes utenfor
+   * byttene. Det gjør låsen absolutt: en straff i kostfunksjonen ville bare
+   * gjort det dyrt å flytte dem, ikke umulig.
+   */
+  pinned?: Map<string, number>;
+  /** Elevpar som ikke skal sitte ved samme bord, som kanoniske par-nøkler. */
+  apart?: Set<string>;
+}
+
+function groupCost(
+  group: string[],
+  historyMap: Map<string, number>,
+  apart: Set<string>
+): number {
   let cost = 0;
   for (let i = 0; i < group.length; i++) {
     for (let j = i + 1; j < group.length; j++) {
-      cost += historyMap.get(pairKey(group[i], group[j])) ?? 0;
+      const key = pairKey(group[i], group[j]);
+      cost += historyMap.get(key) ?? 0;
+      if (apart.has(key)) cost += APART_PENALTY;
     }
   }
   return cost;
+}
+
+/** Parene i fordelingen som bryter en regel om å ikke sitte sammen. */
+export function apartViolations(groups: SeatingGroups, apart: Set<string>): [string, string][] {
+  if (apart.size === 0) return [];
+  return pairsFromGroups(groups).filter(([a, b]) => apart.has(pairKey(a, b)));
 }
 
 /**
@@ -48,19 +90,45 @@ function groupCost(group: string[], historyMap: Map<string, number>): number {
  * stående tomme. Byttene under herdingen holder gruppestørrelsene uendret, så
  * ingen pult blir overfylt.
  *
- * `pinned` er elever læreren har låst til en pult, som elev-id -> pultens
- * plass i `capacities`. De settes ved pulten sin før herdingen starter og
- * holdes utenfor byttene. Det gjør låsen absolutt: en straff i kostfunksjonen
- * ville bare gjort det dyrt å flytte dem, ikke umulig.
+ * Låser og regler kommer inn gjennom `options` (se `SeatingOptions`). Er det
+ * regler om hvem som ikke skal sitte sammen, prøves fordelingen på nytt til
+ * ingen av dem brytes, eller til forsøkene er brukt opp. Det som blir igjen da,
+ * er regler som ikke lar seg oppfylle — og det skal læreren få vite.
  */
 export function generateSeatingChart(
   students: Student[],
   capacities: number[],
   historyMap: Map<string, number>,
-  pinned: Map<string, number> = new Map()
+  options: SeatingOptions = {}
 ): SeatingGroups {
   if (students.length === 0) return [];
 
+  const apart = options.apart ?? new Set<string>();
+  const attempts = apart.size > 0 ? APART_ATTEMPTS : 1;
+
+  let best = anneal(students, capacities, historyMap, options, apart);
+  let fewest = apartViolations(best, apart).length;
+
+  for (let attempt = 1; attempt < attempts && fewest > 0; attempt++) {
+    const next = anneal(students, capacities, historyMap, options, apart);
+    const broken = apartViolations(next, apart).length;
+    if (broken < fewest) {
+      best = next;
+      fewest = broken;
+    }
+  }
+  return best;
+}
+
+/** Ett forsøk på en fordeling: tilfeldig utgangsstilling, så simulert herding. */
+function anneal(
+  students: Student[],
+  capacities: number[],
+  historyMap: Map<string, number>,
+  options: SeatingOptions,
+  apart: Set<string>
+): SeatingGroups {
+  const pinned = options.pinned ?? new Map<string, number>();
   const ids = shuffle(students.map((s) => s.id));
 
   const caps = capacities.length > 0 ? capacities.map((c) => Math.max(1, c)) : [DEFAULT_SEATS];
@@ -107,13 +175,13 @@ export function generateSeatingChart(
     const i2 = Math.floor(Math.random() * groups[g2].length);
     if (locked.has(groups[g1][i1]) || locked.has(groups[g2][i2])) continue;
 
-    const before = groupCost(groups[g1], historyMap) + groupCost(groups[g2], historyMap);
+    const before = groupCost(groups[g1], historyMap, apart) + groupCost(groups[g2], historyMap, apart);
 
     const tmp = groups[g1][i1];
     groups[g1][i1] = groups[g2][i2];
     groups[g2][i2] = tmp;
 
-    const after = groupCost(groups[g1], historyMap) + groupCost(groups[g2], historyMap);
+    const after = groupCost(groups[g1], historyMap, apart) + groupCost(groups[g2], historyMap, apart);
     const delta = after - before;
 
     const accept = delta <= 0 || Math.random() < Math.exp(-delta / (temperature + 0.05));

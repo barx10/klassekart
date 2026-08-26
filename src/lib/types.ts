@@ -71,6 +71,20 @@ export interface SeatingChart {
   created_at: string;
 }
 
+/**
+ * Et elevpar læreren har bestemt at ikke skal sitte sammen. «Sammen» betyr
+ * samme bord, slik resten av appen regner par: par-historikken og varmekartet
+ * teller to elever som sammen når de sitter ved samme pult.
+ *
+ * Som `PairHistoryRow` har raden ingen id — klassen og de to elevene er
+ * nøkkelen, og elevene lagres alltid i samme rekkefølge (`pairKey`).
+ */
+export interface ApartPair {
+  class_id: string;
+  student_a_id: string;
+  student_b_id: string;
+}
+
 export interface PairHistoryRow {
   class_id: string;
   student_a_id: string;

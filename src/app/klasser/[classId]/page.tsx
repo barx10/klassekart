@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { useAppData } from "@/lib/app-data";
+import { pairKey } from "@/lib/seating";
 import {
   addColumn,
   addDesk,
@@ -86,6 +87,7 @@ export default function ClassDetailPage() {
     assignments,
     locks,
     toggleLock,
+    apartPairs,
     charts,
     activeChartId,
     moveStudent,
@@ -100,6 +102,11 @@ export default function ClassDetailPage() {
   const studentsById = useMemo(
     () => new Map(activeStudents.map((s) => [s.id, s])),
     [activeStudents]
+  );
+
+  const apartKeys = useMemo(
+    () => new Set(apartPairs.map((p) => pairKey(p.student_a_id, p.student_b_id))),
+    [apartPairs]
   );
 
   const activeChart = charts.find((c) => c.id === activeChartId);
@@ -188,12 +195,32 @@ export default function ClassDetailPage() {
       )}
 
       {lastResult && (
-        <p
-          role="status"
-          className="mb-3 inline-flex rounded-lg border border-good/30 bg-good-soft px-3 py-1.5 text-xs text-good"
-        >
-          {lastResult.newPairs} av {lastResult.totalPairs} elevpar sitter sammen for første gang.
-        </p>
+        <div className="mb-3 flex flex-col items-start gap-2">
+          <p
+            role="status"
+            className="inline-flex rounded-lg border border-good/30 bg-good-soft px-3 py-1.5 text-xs text-good"
+          >
+            {lastResult.newPairs} av {lastResult.totalPairs} elevpar sitter sammen for første gang.
+          </p>
+
+          {/* Reglene er ikke alltid mulige å oppfylle — for få bord, eller to
+              låste elever ved samme pult. Da skal læreren få vite hvem det
+              gjelder, ikke få et kart som ser riktig ut uten å være det. */}
+          {lastResult.brokenRules.length > 0 && (
+            <p
+              role="status"
+              className="inline-flex rounded-lg border border-danger/40 bg-danger-soft px-3 py-1.5 text-xs text-danger"
+            >
+              {plural(lastResult.brokenRules.length, "regel", "regler")} kunne ikke oppfylles:{" "}
+              {lastResult.brokenRules
+                .map(([a, b]) =>
+                  `${studentsById.get(a)?.name ?? "?"} og ${studentsById.get(b)?.name ?? "?"}`
+                )
+                .join(", ")}{" "}
+              måtte settes ved samme bord. Flere bord, eller færre låste plasser, gir mer å gå på.
+            </p>
+          )}
+        </div>
       )}
 
       {/* Verktøy for å bygge klasserommet. Lå tidligere på én lang linje sammen
@@ -289,6 +316,7 @@ export default function ClassDetailPage() {
         assignments={assignments}
         studentsById={studentsById}
         locks={locks}
+        apartKeys={apartKeys}
         onDesksChange={(next, persist) => {
           setDragging(!persist);
           applyDesks(next, undefined, persist);

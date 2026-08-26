@@ -20,6 +20,7 @@ import {
   type Rect,
 } from "@/lib/classroom";
 import { genderDotClass, genderName } from "@/lib/gender";
+import { pairKey } from "@/lib/seating";
 import type { Desk, DeskAssignments, SeatLocks, Student } from "@/lib/types";
 import { inputClassSm, plural } from "@/lib/ui";
 
@@ -34,6 +35,8 @@ interface Props {
   studentsById: Map<string, Student>;
   /** Elever som er låst til et sete, med elev-id som nøkkel. */
   locks: SeatLocks;
+  /** Elevpar som ikke skal sitte ved samme bord, som kanoniske par-nøkler. */
+  apartKeys: Set<string>;
   /** Kalles mens pulter dras (persist=false) og når de slippes (persist=true). */
   onDesksChange: (desks: Desk[], persist: boolean) => void;
   onRemoveDesks: (deskIds: string[]) => void;
@@ -160,6 +163,7 @@ export default function ClassroomCanvas({
   assignments,
   studentsById,
   locks,
+  apartKeys,
   onDesksChange,
   onRemoveDesks,
   onSeatsChange,
@@ -200,6 +204,30 @@ export default function ClassroomCanvas({
   );
   const many = selectedDesks.length > 1;
 
+  /**
+   * Bord der to elever sitter sammen som ikke skal det. Genereringen holder dem
+   * fra hverandre, men læreren kan dra dem sammen etterpå — og skal få lov: i
+   * øyeblikket vet hen best. Da sier vi fra i stedet for å nekte.
+   */
+  const conflicts = useMemo(() => {
+    const perDesk = new Map<string, string[]>();
+    if (apartKeys.size === 0) return perDesk;
+
+    for (const desk of desks) {
+      const seated = (assignments[desk.id] ?? []).filter((id): id is string => Boolean(id));
+      const brutt: string[] = [];
+      for (let i = 0; i < seated.length; i++) {
+        for (let j = i + 1; j < seated.length; j++) {
+          if (!apartKeys.has(pairKey(seated[i], seated[j]))) continue;
+          const a = studentsById.get(seated[i])?.name ?? "Eleven";
+          const b = studentsById.get(seated[j])?.name ?? "eleven";
+          brutt.push(`${a} og ${b}`);
+        }
+      }
+      if (brutt.length > 0) perDesk.set(desk.id, brutt);
+    }
+    return perDesk;
+  }, [desks, assignments, apartKeys, studentsById]);
 
   // --- Lerretets mål og zoom ----------------------------------------------
   // Klasserommet er ofte bredere enn skjermen. Før måtte du dra i et rullefelt
@@ -750,6 +778,7 @@ export default function ClassroomCanvas({
                 const isResizing = deskResize?.deskId === desk.id;
                 const isSelected = selected.has(desk.id);
                 const label = deskLabel(desk);
+                const brutt = conflicts.get(desk.id);
                 return (
                   <div
                     key={desk.id}
@@ -758,7 +787,9 @@ export default function ClassroomCanvas({
                         ? "z-30 border-accent shadow-lg"
                         : isSelected
                           ? "z-20 border-accent"
-                          : "z-10 border-border hover:border-border-strong"
+                          : brutt
+                            ? "z-10 border-danger"
+                            : "z-10 border-border hover:border-border-strong"
                     }`}
                     style={{
                       left: desk.x,
@@ -767,6 +798,17 @@ export default function ClassroomCanvas({
                       height: deskHeight(desk),
                     }}
                   >
+                    {brutt && (
+                      <span
+                        data-print-hide
+                        title={`${brutt.join(", ")} skal ikke sitte sammen`}
+                        className="absolute -top-1.5 -left-1.5 z-30 flex h-4 w-4 items-center justify-center rounded-full bg-danger text-[11px] font-bold text-white"
+                      >
+                        <span aria-hidden>!</span>
+                        <span className="sr-only">{brutt.join(", ")} skal ikke sitte sammen.</span>
+                      </span>
+                    )}
+
                     {/* Topplinje: bordnavn + draghåndtak for pulten */}
                     <button
                       type="button"
