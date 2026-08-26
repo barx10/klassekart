@@ -184,7 +184,12 @@ export default function ClassroomCanvas({
   const [picked, setPicked] = useState<SeatRef | null>(null);
   const [announcement, setAnnouncement] = useState("");
 
-  const { width, height } = canvasSize(desks);
+  /**
+   * Målene lerretet låses til mens et drag pågår. `null` betyr «følg pultene».
+   */
+  const [heldRoom, setHeldRoom] = useState<{ width: number; height: number; zoom: number } | null>(
+    null
+  );
 
   const selected = useMemo(() => new Set(selectedIds), [selectedIds]);
   // Merkede pulter som fortsatt finnes. Fjernes en pult, faller den ut av
@@ -195,7 +200,8 @@ export default function ClassroomCanvas({
   );
   const many = selectedDesks.length > 1;
 
-  // --- Zoom ----------------------------------------------------------------
+
+  // --- Lerretets mål og zoom ----------------------------------------------
   // Klasserommet er ofte bredere enn skjermen. Før måtte du dra i et rullefelt
   // for å se resten av kartet; nå krympes lerretet så hele rommet er synlig,
   // med mulighet til å zoome inn manuelt.
@@ -213,12 +219,35 @@ export default function ClassroomCanvas({
     return () => observer.disconnect();
   }, []);
 
+  /**
+   * Lerretet følger pultene — men står helt stille mens en pult dras.
+   *
+   * Uten det måles rommet på nytt for hver eneste musebevegelse, og både
+   * bredden og «Tilpass»-zoomen endrer seg mens du drar. Lerretet er sentrert
+   * med `mx-auto`, så en ny bredde flytter hele klasserommet sidelengs under
+   * markøren; en ny zoom skalerer alt samtidig, og kan legge til eller fjerne
+   * rullefeltet, som endrer bredden igjen. Det er dette som ser ut som
+   * flimring.
+   *
+   * Målene låses derfor både mot å krympe *og* mot å vokse — det er veksten
+   * som flytter sentreringen. Ingenting går tapt av å la dem stå: pulten dras
+   * med markøren, og markøren er alltid innenfor skjermen. Når du slipper,
+   * finner rommet sin nye størrelse i én bevegelse.
+   */
+  const room = canvasSize(desks);
+  const width = heldRoom ? heldRoom.width : room.width;
+  const height = heldRoom ? heldRoom.height : room.height;
+
   const fitZoom =
     viewportWidth > 0
       ? Math.min(1, Math.max(MIN_FIT_ZOOM, viewportWidth / width))
       : 1;
-  const zoom = manualZoom ?? fitZoom;
+  const zoom = manualZoom ?? heldRoom?.zoom ?? fitZoom;
   const isFitted = manualZoom === null;
+
+  /** Låser målene mens et drag pågår, og slipper dem etterpå. */
+  const holdRoom = () => setHeldRoom({ ...canvasSize(desks), zoom });
+  const releaseRoom = () => setHeldRoom(null);
 
   const stepZoom = (delta: number) =>
     setManualZoom(Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, Math.round((zoom + delta) * 100) / 100)));
@@ -263,6 +292,7 @@ export default function ClassroomCanvas({
     const point = toCanvas(e.clientX, e.clientY);
     if (!point) return;
     e.currentTarget.setPointerCapture(e.pointerId);
+    holdRoom();
 
     // Shift (eller Ctrl/Cmd) legger pulten til utvalget i stedet for å dra den.
     if (e.shiftKey || e.metaKey || e.ctrlKey) {
@@ -304,6 +334,7 @@ export default function ClassroomCanvas({
   }
 
   function handleHeaderPointerUp(e: React.PointerEvent) {
+    releaseRoom();
     if (!deskDrag) return;
     e.currentTarget.releasePointerCapture(e.pointerId);
 
@@ -313,10 +344,19 @@ export default function ClassroomCanvas({
       setDeskDrag(null);
       return;
     }
+    // Regn sluttstillingen ut fra der markøren slippes, og ikke fra det siste
+    // bildet: slippes knappen i samme øyeblikk som den siste bevegelsen, har
+    // React ikke rukket å tegne den ennå, og pulten ville blitt liggende noen
+    // piksler fra der læreren faktisk slapp den.
+    const point = toCanvas(e.clientX, e.clientY);
+    const placed = point
+      ? moveDesksFrom(desks, deskDrag.origins, point.x - deskDrag.startX, point.y - deskDrag.startY)
+      : desks;
+
     // Flytt de dratte pultene bakerst i lista slik at de tegnes øverst — ellers
     // kan en pult bli liggende skjult under en den er dratt oppå.
-    const dragged = desks.filter((d) => deskDrag.origins[d.id]);
-    const rest = desks.filter((d) => !deskDrag.origins[d.id]);
+    const dragged = placed.filter((d) => deskDrag.origins[d.id]);
+    const rest = placed.filter((d) => !deskDrag.origins[d.id]);
     setDeskDrag(null);
     onDesksChange([...rest, ...dragged], true);
   }
@@ -386,6 +426,7 @@ export default function ClassroomCanvas({
   function handleResizePointerDown(e: React.PointerEvent, desk: Desk) {
     e.stopPropagation();
     e.currentTarget.setPointerCapture(e.pointerId);
+    holdRoom();
     setSelectedIds([desk.id]);
     setDeskResize({
       deskId: desk.id,
@@ -407,6 +448,7 @@ export default function ClassroomCanvas({
   }
 
   function handleResizePointerUp(e: React.PointerEvent) {
+    releaseRoom();
     if (!deskResize) return;
     e.currentTarget.releasePointerCapture(e.pointerId);
     onResizeDesk(
@@ -526,7 +568,12 @@ export default function ClassroomCanvas({
       }}
     >
       {desks.length > 0 && (
-        <div data-print-hide className="mb-2 flex flex-wrap items-center justify-between gap-2">
+        // Fast høyde på linja: uten den vokser den når verktøylinja for flere
+        // merkede dukker opp, og hele klasserommet hopper nedover.
+        <div
+          data-print-hide
+          className="mb-2 flex min-h-8 flex-wrap items-center justify-between gap-2"
+        >
           {/* Verktøylinja for flere merkede pulter ligger her og ikke under dem:
               sentrert under utvalget ville den blitt klippet av rullefeltet så
               snart utvalget lå ute mot kanten av rommet. */}

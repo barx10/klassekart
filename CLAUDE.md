@@ -90,6 +90,18 @@ Topplinja på pulten har to jobber: den viser bordnavnet og er draghåndtaket.
 Uten den ville elevkortene og pultflyttingen kjempet om det samme klikket,
 siden setene dekker nesten hele pulten.
 
+**Lerretet må stå stille mens en pult dras.** Både målene (`canvasSize`) og
+«Tilpass»-zoomen fryses i `heldRoom` så lenge draget varer, og varselet om
+overlappende pulter holdes tilbake av `dragging` i klassesida. Uten det måles
+rommet på nytt for hver musebevegelse: `mx-auto` flytter klasserommet sidelengs
+når bredden endrer seg, og varselet over lerretet dytter det opp og ned når to
+pulter så vidt berører hverandre. Da glir pulten vekk fra markøren, overlappingen
+opphører, varselet forsvinner — og det begynner på nytt. Det ser ut som at hele
+klasserommet blinker.
+
+Av samme grunn regnes **sluttstillingen ut fra der markøren slippes**, ikke fra
+det siste bildet React rakk å tegne.
+
 To ting som lett brekker igjen:
 
 - **Verktøylinja for valgt pult må ligge _under_ pulten.** Over den blir den

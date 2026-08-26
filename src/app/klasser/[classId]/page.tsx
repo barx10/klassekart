@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { useAppData } from "@/lib/app-data";
 import {
   addColumn,
@@ -103,6 +103,13 @@ export default function ClassDetailPage() {
   );
 
   const activeChart = charts.find((c) => c.id === activeChartId);
+
+  /**
+   * Om en pult dras akkurat nå. Klasserommet melder fra ved å lagre først når
+   * draget er ferdig (`persist`), og vi bruker det til å holde varselet om
+   * overlappende pulter i ro underveis — se under.
+   */
+  const [dragging, setDragging] = useState(false);
 
   if (loading)
     return (
@@ -241,7 +248,11 @@ export default function ClassDetailPage() {
         </button>
       </div>
 
-      {overlapping && (
+      {/* Varselet holdes tilbake mens en pult dras. Det ligger over lerretet, så
+          det å vise og skjule det midt i draget dytter hele klasserommet opp og
+          ned: pulten glir vekk fra markøren, overlappingen opphører, varselet
+          forsvinner — og så begynner det på nytt. Det er den flimringen. */}
+      {overlapping && !dragging && (
         <div
           data-print-hide
           className="mb-3 flex flex-wrap items-center justify-between gap-2 rounded-lg border border-border bg-surface px-3 py-2 text-xs text-muted"
@@ -278,7 +289,10 @@ export default function ClassDetailPage() {
         assignments={assignments}
         studentsById={studentsById}
         locks={locks}
-        onDesksChange={(next, persist) => applyDesks(next, undefined, persist)}
+        onDesksChange={(next, persist) => {
+          setDragging(!persist);
+          applyDesks(next, undefined, persist);
+        }}
         onRemoveDesks={(deskIds) => {
           const remove = new Set(deskIds);
           applyDesks(desks.filter((d) => !remove.has(d.id)));
@@ -287,9 +301,10 @@ export default function ClassDetailPage() {
           applyDesks(changeDeskSeats(desks, new Set(deskIds), delta))
         }
         onRenameDesk={(deskId, name) => applyDesks(setDeskName(desks, deskId, name))}
-        onResizeDesk={(deskId, w, h, persist) =>
-          applyDesks(setDeskSize(desks, deskId, w, h), undefined, persist)
-        }
+        onResizeDesk={(deskId, w, h, persist) => {
+          setDragging(!persist);
+          applyDesks(setDeskSize(desks, deskId, w, h), undefined, persist);
+        }}
         onResetDeskSize={(deskId) => applyDesks(resetDeskSize(desks, deskId))}
         onMoveStudent={moveStudent}
         onToggleLock={toggleLock}
