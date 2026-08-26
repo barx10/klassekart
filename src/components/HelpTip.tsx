@@ -17,18 +17,25 @@ interface Props {
  * ikke leses av skjermlesere på en pålitelig måte, og forsvinner idet du
  * beveger pekeren.
  *
- * Teksten står i flyten under, ikke som et lag oppå. I den smale menyen ville
- * en boble uansett ikke fått plass ved siden av. Til gjengjeld må den rulles
- * fram: hjelpen brukes nederst i menyen, der det som skyves ned havner utenfor
- * skjermkanten.
+ * **Teksten ligger som et lag over innholdet, ikke i flyten.** Den sto først i
+ * flyten, og da flimret skjermen: hjelpen brukes nederst i menyen, der
+ * seksjonen er forankret til bunnen med `mt-auto`. Teksten gjorde seksjonen
+ * høyere, seksjonen vokste oppover, og spørsmålstegnet hoppet et par hundre
+ * piksler vekk fra musepekeren — hvorpå teksten forsvant, alt falt tilbake, og
+ * pekeren var over knappen på nytt. Et lag endrer ingen layout, så knappen blir
+ * stående.
+ *
+ * Boksen sentreres over knappen. Står knappen helt ute ved en kant, kan den bli
+ * klippet av en forelder som skjuler det som flyter utenfor.
  */
 export default function HelpTip({ label, children }: Props) {
   const [open, setOpen] = useState(false);
   const [hover, setHover] = useState(false);
   const id = useId();
+  const vis = open || hover;
 
   return (
-    <>
+    <span className="relative inline-flex">
       <button
         type="button"
         aria-label={label}
@@ -40,7 +47,7 @@ export default function HelpTip({ label, children }: Props) {
         onFocus={() => setHover(true)}
         onBlur={() => setHover(false)}
         className={`inline-flex h-4 w-4 shrink-0 items-center justify-center rounded-full border text-[10px] font-semibold leading-none ${
-          open || hover
+          vis
             ? "border-accent-text bg-accent-soft text-accent-text"
             : "border-border-strong text-subtle"
         }`}
@@ -48,18 +55,15 @@ export default function HelpTip({ label, children }: Props) {
         <span aria-hidden>?</span>
       </button>
 
-      {(open || hover) && (
-        <div
+      {vis && (
+        <span
           id={id}
           role="note"
-          ref={(el) => {
-            el?.scrollIntoView({ block: "nearest" });
-          }}
-          className="mt-1.5 basis-full rounded-md border border-border bg-surface px-2.5 py-2 text-[11px] leading-relaxed text-muted"
+          className="absolute bottom-full left-1/2 z-30 mb-2 block w-60 max-w-[80vw] -translate-x-1/2 rounded-md border border-border bg-surface px-2.5 py-2 text-left text-[11px] font-normal normal-case leading-relaxed tracking-normal text-muted shadow-lg"
         >
           {children}
-        </div>
+        </span>
       )}
-    </>
+    </span>
   );
 }

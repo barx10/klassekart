@@ -439,7 +439,7 @@ export default function Sidebar({ open, hidden, onClose, onHide, onAbout }: Prop
         )}
 
         <div className="mt-auto border-t border-border p-2">
-          <div className="flex flex-wrap items-center gap-1.5 px-2 pb-1.5 pt-1">
+          <div className="flex items-center gap-1.5 px-2 pb-1.5 pt-1">
             <h2 className="text-xs font-semibold uppercase tracking-wide text-subtle">
               Sikkerhetskopi
             </h2>
