@@ -174,6 +174,22 @@ body {
     --accent: #1f66c0;
     --accent-text: #14498a;
     --accent-soft: #ffffff;
+
+    /* Kjønnsfargene settes tilbake til lys utgave. Uten dette skriver en
+       lærer med mørk modus ut seter med nesten svart fyll. */
+    --gender-jente: #d1417a;
+    --gender-jente-soft: #fbe9f1;
+    --gender-gutt: #1f66c0;
+    --gender-gutt-soft: #e7f0fc;
+    --gender-annet: #6d6a63;
+    --gender-annet-soft: #efeee9;
+  }
+
+  /* Fargen i setet forteller hvem som sitter hvor, så den skal med på arket.
+     Nettlesere dropper bakgrunnsfarger i utskrift med mindre vi ber om det. */
+  * {
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
   }
 
   body {
@@ -190,9 +206,29 @@ body {
     outline: none !important;
   }
 
+  /* Skallet er meny + innhold side om side på skjermen. På papiret er det
+     ingen meny, og en flex-rad ville gitt klassekartet en smalere spalte enn
+     arket — det er den spalta kartet lå usentrert i, og rant ut av til høyre. */
+  [data-print-full] {
+    display: block !important;
+  }
+
   main {
     overflow: visible !important;
     padding: 0 !important;
+  }
+
+  /* Utskriften bruker sin egen skalering, regnet ut fra arket i stedet for fra
+     vinduet — se `printZoom` i classroom.ts. Zoomen ligger som en variabel og
+     ikke som en ferdig utregnet bredde nettopp for å kunne byttes her. */
+  [data-room] {
+    --zoom: var(--print-zoom) !important;
+  }
+
+  /* Et klassekart hører hjemme på ett ark. */
+  [data-room],
+  [data-print-area] {
+    break-inside: avoid;
   }
 
   [data-print-area] {
@@ -202,7 +238,10 @@ body {
     padding: 0 !important;
   }
 
+  /* Liggende ark: et klasserom er bredere enn det er dypt, og stående A4 ga et
+     kart som enten ble knøttlite eller klippet ved høyre marg. */
   @page {
-    margin: 12mm;
+    size: A4 landscape;
+    margin: 10mm;
   }
 }

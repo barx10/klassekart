@@ -132,11 +132,24 @@ export default function ClassDetailPage() {
   const overlapping = desksOverlap(desks);
 
   return (
-    <div className="mx-auto max-w-6xl">
-      <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
+    <div className="mx-auto max-w-6xl print:max-w-none">
+      {/* Overskrifta på papiret. Den skjermversjonen som står under er venstre-
+          stilt og ligger i en spalte som er bredere enn arket — der forsvant
+          klassenavnet ut over margen. Her står navn og dato midtstilt over
+          kartet, innenfor margene, slik læreren kjenner det igjen på pulten. */}
+      <div aria-hidden className="mb-4 hidden text-center print:block">
+        <p className="text-2xl font-bold">{activeClass.name}</p>
+        <p className="mt-0.5 text-sm text-muted">
+          {activeChart
+            ? `Klassekart ${new Date(activeChart.created_at).toLocaleDateString("nb-NO")}`
+            : "Klassekart"}
+        </p>
+      </div>
+
+      <div className="mb-4 flex flex-wrap items-start justify-between gap-3 print:hidden">
         <div>
           <h1 className="text-2xl font-bold">{activeClass.name}</h1>
-          <p className="mt-0.5 text-xs text-subtle print:hidden">
+          <p className="mt-0.5 text-xs text-subtle">
             {plural(desks.length, "pult", "pulter")} · {plural(seats, "plass", "plasser")} ·{" "}
             {plural(activeStudents.length, "elev", "elever")}
             {activeChart && (
@@ -180,6 +193,7 @@ export default function ClassDetailPage() {
       {error && (
         <div
           role="alert"
+          data-print-hide
           className="mb-3 flex items-start justify-between gap-3 rounded-lg border border-danger/40 bg-danger-soft px-4 py-2.5 text-sm text-danger"
         >
           <span>{error}</span>
@@ -195,7 +209,7 @@ export default function ClassDetailPage() {
       )}
 
       {lastResult && (
-        <div className="mb-3 flex flex-col items-start gap-2">
+        <div data-print-hide className="mb-3 flex flex-col items-start gap-2">
           <p
             role="status"
             className="inline-flex rounded-lg border border-good/30 bg-good-soft px-3 py-1.5 text-xs text-good"
@@ -296,18 +310,10 @@ export default function ClassDetailPage() {
       )}
 
       {tooFewSeats && (
-        <p className="mb-3 text-xs text-subtle">
+        <p data-print-hide className="mb-3 text-xs text-subtle">
           Det er {plural(activeStudents.length, "elev", "elever")}, men bare{" "}
           {plural(seats, "plass", "plasser")} — flere topulter legges til automatisk når du
           genererer.
-        </p>
-      )}
-
-      {/* Datolinje som bare kommer med på papiret — på skjermen står den
-          allerede i meta-linja under klassenavnet. */}
-      {activeChart && (
-        <p className="mb-3 hidden text-xs print:block">
-          Klassekart {new Date(activeChart.created_at).toLocaleDateString("nb-NO")}
         </p>
       )}
 

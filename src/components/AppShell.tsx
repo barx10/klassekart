@@ -59,7 +59,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   }, [menuOpen]);
 
   return (
-    <div className="flex min-h-dvh w-full flex-col lg:flex-row">
+    <div data-print-full className="flex min-h-dvh w-full flex-col lg:flex-row print:min-h-0">
       {/* Bakteppe bak skuffen */}
       {menuOpen && (
         <div

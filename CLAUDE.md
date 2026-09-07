@@ -91,6 +91,13 @@ Topplinja på pulten har to jobber: den viser bordnavnet og er draghåndtaket.
 Uten den ville elevkortene og pultflyttingen kjempet om det samme klikket,
 siden setene dekker nesten hele pulten.
 
+**Kjønn er fargen på setet** (`genderSeatClass`), ikke en prikk foran navnet.
+Prikken var to piksler bred, og på et utskrevet kart på pulten forsvant den
+helt; fyllet leses på avstand, og plassen prikken tok gikk til navnet. Fyllet er
+lyst og ikke mettet: navnet skal stå i vanlig tekstfarge, og et ark med tjue
+mettede flater bruker mye blekk. I listene ellers i appen er kjønn fortsatt en
+prikk — der er det ingen flate å farge.
+
 **Lerretet må stå stille mens en pult dras.** Både målene (`canvasSize`) og
 «Tilpass»-zoomen fryses i `heldRoom` så lenge draget varer, og varselet om
 overlappende pulter holdes tilbake av `dragging` i klassesida. Uten det måles
@@ -110,6 +117,30 @@ To ting som lett brekker igjen:
   `TOOLBAR_ROOM` reserverer plassen i `canvasSize()`.
 - **En sluppet pult flyttes bakerst i lista** så den tegnes øverst. Ellers
   blir den liggende skjult under pulten den ble dratt oppå.
+
+#### Utskrift
+
+Klassekartet havner på papir, og der er det navnene som er hele poenget.
+
+- **Utskriften har sin egen skalering.** Skjermens «Tilpass»-zoom er regnet ut
+  fra vinduet læreren tilfeldigvis har åpent — arves den til papiret, blir
+  kartet like lite som det var på skjermen, og et bredt rom renner ut over
+  høyre marg. `printZoom()` måler i stedet rommet mot arket, og forstørrer et
+  lite rom i stedet for å la det krype oppe i hjørnet.
+- **Zoomen ligger som CSS-variabelen `--zoom` på lerretet**, ikke som en ferdig
+  utregnet bredde, nettopp for at `@media print` skal kunne bytte den mot
+  `--print-zoom`. Alternativet — å måle om alt i en `beforeprint`-lytter —
+  krever at React rekker å tegne på nytt før nettleseren tar bildet av sida, og
+  det kan vi ikke love.
+- **Arket er A4 liggende.** Et klasserom er bredere enn det er dypt.
+  `PRINT_WIDTH`/`PRINT_HEIGHT` er margene minus plassen overskrifta, tavla og
+  bunnteksten tar; blir de satt for høyt, sklir kartet over på side to.
+- **Overskrifta på papiret er en egen, midtstilt blokk.** Skjermversjonen står
+  til venstre i en spalte som er bredere enn arket, og der forsvant klassenavnet
+  ut over margen.
+- **Skallet legges om til `display: block` i utskrift** (`[data-print-full]`).
+  Som flex-rad med menya borte fikk kartet en smalere spalte enn arket, og lå
+  usentrert i den.
 
 #### Flere merkede pulter
 

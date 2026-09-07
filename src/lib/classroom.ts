@@ -605,6 +605,40 @@ export function canvasSize(desks: Desk[]): { width: number; height: number } {
   return { width: maxX + PADDING, height: maxY + PADDING + TOOLBAR_ROOM };
 }
 
+/**
+ * Papirmålene utskriften regnes mot: A4 liggende med 10 mm marg, i piksler ved
+ * 96 dpi — samme enhet som resten av lerretet. Liggende fordi et klasserom er
+ * bredere enn det er dypt; høyden er trukket ned for overskrifta og tavla som
+ * står over rommet på arket.
+ */
+export const PRINT_WIDTH = 1030;
+export const PRINT_HEIGHT = 520;
+
+/**
+ * Hvor mye utskriften får forstørre et lite rom. Uten et tak ville en klasse
+ * med fire bord fått navn på størrelse med overskrifter.
+ */
+export const MAX_PRINT_ZOOM = 1.8;
+
+/**
+ * Skaleringen klassekartet skrives ut med.
+ *
+ * Utskriften skal ikke arve zoomen fra skjermen: den er tilpasset vinduet
+ * læreren tilfeldigvis har åpent, og på en skjerm med menya framme havnet hele
+ * kartet på godt under halv størrelse — navnene ble uleselige, og et bredt rom
+ * rant ut over høyre marg. Her måles rommet mot arket i stedet, og små rom
+ * forstørres i stedet for å ligge og krype oppe i hjørnet.
+ *
+ * Plassen verktøylinja trenger under nederste rad (`TOOLBAR_ROOM`) regnes ikke
+ * med — på papiret finnes ingen verktøylinje.
+ */
+export function printZoom(desks: Desk[]): number {
+  const room = canvasSize(desks);
+  const height = Math.max(1, room.height - TOOLBAR_ROOM);
+  const fit = Math.min(PRINT_WIDTH / room.width, PRINT_HEIGHT / height);
+  return Math.round(Math.min(MAX_PRINT_ZOOM, fit) * 1000) / 1000;
+}
+
 /** Lager et ferdig oppstilt rutenett med topulter. */
 export function makeGrid(rows: number, cols: number, seats = DEFAULT_SEATS): Desk[] {
   const total = Math.max(1, rows) * Math.max(1, cols);
