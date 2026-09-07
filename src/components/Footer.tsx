@@ -4,7 +4,7 @@ import Link from "next/link";
 
 export default function Footer({ onAbout }: { onAbout: () => void }) {
   return (
-    <footer className="mt-8 border-t border-border px-4 py-6 text-center">
+    <footer className="mt-8 border-t border-border px-4 py-6 text-center print:mt-3 print:py-2">
       <div data-print-hide className="mb-2 flex flex-wrap items-center justify-center gap-x-3 gap-y-1 text-xs">
         <button type="button" onClick={onAbout} className="text-accent-text hover:underline">
           Om Klassekart

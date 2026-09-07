@@ -16,11 +16,12 @@ import {
   distributeDesks,
   moveDesksFrom,
   nudgeDesks,
+  printZoom,
   seatGrid,
   spreadAxis,
   type Rect,
 } from "@/lib/classroom";
-import { genderDotClass, genderName } from "@/lib/gender";
+import { genderName, genderSeatClass } from "@/lib/gender";
 import { pairKey } from "@/lib/seating";
 import type { Desk, DeskAssignments, SeatLocks, Student } from "@/lib/types";
 import { inputClassSm, plural } from "@/lib/ui";
@@ -282,6 +283,15 @@ export default function ClassroomCanvas({
       : 1;
   const zoom = manualZoom ?? heldRoom?.zoom ?? fitZoom;
   const isFitted = manualZoom === null;
+
+  /**
+   * Skaleringen papiret skal ha. Den regnes ut her, men brukes bare av
+   * utskrifts-CSS-en: begge ligger som variabler på lerretet, og `@media print`
+   * bytter ut den ene med den andre. Alternativet — å måle om alt i en
+   * `beforeprint`-lytter — ville krevd at React rakk å tegne på nytt før
+   * nettleseren tok bildet av sida, og det er ikke noe vi kan love.
+   */
+  const printScale = printZoom(desks);
 
   /** Låser målene mens et drag pågår, og slipper dem etterpå. */
   const holdRoom = () => setHeldRoom({ ...canvasSize(desks), zoom });
@@ -599,6 +609,15 @@ export default function ClassroomCanvas({
   return (
     <div
       data-print-area
+      data-room
+      style={
+        {
+          "--zoom": String(zoom),
+          "--print-zoom": String(printScale),
+          "--room-w": `${width}px`,
+          "--room-h": `${height}px`,
+        } as React.CSSProperties
+      }
       className="rounded-2xl border border-border bg-background p-4 sm:p-6"
       onPointerDown={(e) => {
         // Klikk på tomt lerret opphever merkingen, slik at verktøylinja forsvinner.
@@ -741,9 +760,13 @@ export default function ClassroomCanvas({
           blitt stående bred igjen mens klasserommet krympet under den. */}
       <div
         className="mx-auto mb-6"
-        style={desks.length > 0 ? { width: width * zoom, maxWidth: "100%" } : undefined}
+        style={
+          desks.length > 0
+            ? { width: "calc(var(--room-w) * var(--zoom))", maxWidth: "100%" }
+            : undefined
+        }
       >
-        <div className="mx-auto w-full max-w-sm rounded-full border border-border bg-surface-raised py-2 text-center text-sm font-medium text-muted shadow-sm">
+        <div className="mx-auto w-full max-w-xs rounded-xl bg-accent px-4 py-2 text-center text-sm font-semibold tracking-wide text-accent-on shadow-sm">
           Tavle
         </div>
       </div>
@@ -761,7 +784,10 @@ export default function ClassroomCanvas({
           {/* Ytre boks tar den skalerte plassen, så sida flyter riktig rundt. */}
           <div
             className="relative mx-auto"
-            style={{ width: width * zoom, height: height * zoom }}
+            style={{
+              width: "calc(var(--room-w) * var(--zoom))",
+              height: "calc(var(--room-h) * var(--zoom))",
+            }}
           >
             <div
               ref={canvasRef}
@@ -770,7 +796,7 @@ export default function ClassroomCanvas({
               onPointerUp={handleCanvasPointerUp}
               onPointerCancel={handleCanvasPointerUp}
               className="absolute top-0 left-0 origin-top-left touch-none"
-              style={{ width, height, transform: `scale(${zoom})` }}
+              style={{ width, height, transform: "scale(var(--zoom))" }}
             >
               {band && (
                 <div
@@ -913,34 +939,27 @@ export default function ClassroomCanvas({
                                   ? `${student.name} har låst plass`
                                   : `${student.name} — dra, eller trykk Enter, for å bytte plass`
                               }
-                              className={`flex h-full w-full touch-none select-none items-center gap-1.5 overflow-hidden rounded-lg border px-2 text-left ${
-                                isLocked ? "cursor-default pr-5" : "cursor-grab"
+                              className={`flex h-full w-full touch-none select-none items-center overflow-hidden rounded-lg border px-2 text-left ${
+                                isLocked ? "cursor-default pr-5 ring-1 ring-accent" : "cursor-grab"
                               } ${
                                 isOver || isPicked
                                   ? "border-accent bg-accent-soft"
                                   : isSource
                                     ? "border-dashed border-accent/60 bg-surface opacity-50"
-                                    : isLocked
-                                      ? "border-accent/50 bg-surface"
-                                      : isTarget
-                                        ? "border-accent/40 bg-surface"
-                                        : "border-border bg-surface"
+                                    : isTarget
+                                      ? "border-accent/40 bg-surface"
+                                      : genderSeatClass(student.gender)
                               }`}
                             >
-                              {student.gender && (
-                                <span
-                                  className={`h-2 w-2 shrink-0 rounded-full ${genderDotClass(
-                                    student.gender
-                                  )}`}
-                                  aria-hidden
-                                />
-                              )}
+                              {/* Navnet fyller setet: kjønnet ligger i fargen på
+                                  setet, ikke i en prikk foran navnet, og da er
+                                  det plass til lengre fornavn før de kuttes. */}
                               <span className="min-w-0 flex-1 leading-tight">
-                                <span className="block truncate text-[13px] font-medium">
+                                <span className="block truncate text-[16px] font-semibold">
                                   {firstName(student.name)}
                                 </span>
                                 {lastName(student.name) && (
-                                  <span className="block truncate text-[11px] text-subtle">
+                                  <span className="block truncate text-[12px] text-muted">
                                     {lastName(student.name)}
                                   </span>
                                 )}
@@ -1107,16 +1126,12 @@ export default function ClassroomCanvas({
       {/* Elevkortet som følger markøren under draging */}
       {studentDrag && draggedStudent && (
         <div
-          className="pointer-events-none fixed z-50 flex items-center gap-1.5 rounded-lg border border-accent bg-surface-raised px-2 py-1.5 shadow-lg"
+          className={`pointer-events-none fixed z-50 rounded-lg border px-2 py-1.5 shadow-lg ${genderSeatClass(
+            draggedStudent.gender
+          )}`}
           style={{ left: studentDrag.x + 12, top: studentDrag.y + 12 }}
         >
-          {draggedStudent.gender && (
-            <span
-              className={`h-2 w-2 shrink-0 rounded-full ${genderDotClass(draggedStudent.gender)}`}
-              aria-hidden
-            />
-          )}
-          <span className="text-[13px] font-medium">{draggedStudent.name}</span>
+          <span className="text-[13px] font-semibold">{draggedStudent.name}</span>
         </div>
       )}
 
