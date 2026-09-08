@@ -8,6 +8,7 @@ import { useAppData } from "@/lib/app-data";
 import StudentManager from "./StudentManager";
 import PairHeatmap from "./PairHeatmap";
 import ApartPairs from "./ApartPairs";
+import StudentGroups from "./StudentGroups";
 import ContactTeachers from "./ContactTeachers";
 import HelpTip from "./HelpTip";
 import Modal from "./Modal";
@@ -97,6 +98,8 @@ export default function Sidebar({ open, hidden, onClose, onHide, onAbout }: Prop
     pairHistory,
     resetPairHistory,
     apartPairs,
+    groupSets,
+    deleteGroupSet,
     contactTeachers,
     removeContactTeacher,
     setError,
@@ -109,6 +112,10 @@ export default function Sidebar({ open, hidden, onClose, onHide, onAbout }: Prop
   const [section, setSection] = useState<Section>(null);
   const [showHeatmap, setShowHeatmap] = useState(false);
   const [showApart, setShowApart] = useState(false);
+  const [showGroups, setShowGroups] = useState(false);
+  const [pendingGroupDelete, setPendingGroupDelete] = useState<{ id: string; name: string } | null>(
+    null
+  );
   const [showTeachers, setShowTeachers] = useState(false);
   const [pendingTeacherDelete, setPendingTeacherDelete] = useState<{ id: string; name: string } | null>(
     null
@@ -127,6 +134,17 @@ export default function Sidebar({ open, hidden, onClose, onHide, onAbout }: Prop
     setPendingTeacherDelete(null);
     try {
       await removeContactTeacher(id);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    }
+  }
+
+  async function doDeleteGroupSet() {
+    if (!pendingGroupDelete) return;
+    const { id } = pendingGroupDelete;
+    setPendingGroupDelete(null);
+    try {
+      await deleteGroupSet(id);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     }
@@ -426,12 +444,31 @@ export default function Sidebar({ open, hidden, onClose, onHide, onAbout }: Prop
               </ul>
             )}
 
-            {/* Egen knapp, ikke en seksjon: den åpner et vindu i stedet for å
+            {/* Egne knapper, ikke seksjoner: de åpner et vindu i stedet for å
                 folde ut noe her — derfor ingen chevron. */}
             <button
               type="button"
-              onClick={() => setShowHeatmap(true)}
+              onClick={() => setShowGroups(true)}
               className="mt-1 flex w-full items-center gap-1.5 rounded-md px-2 py-2 text-left text-sm font-medium hover:bg-background"
+            >
+              <svg viewBox="0 0 16 16" className="h-3.5 w-3.5 shrink-0 text-subtle" fill="none" stroke="currentColor" strokeWidth="1.5" aria-hidden>
+                <rect x="2" y="2" width="5" height="5" rx="1.5" />
+                <rect x="9" y="2" width="5" height="5" rx="1.5" />
+                <rect x="2" y="9" width="5" height="5" rx="1.5" />
+                <rect x="9" y="9" width="5" height="5" rx="1.5" />
+              </svg>
+              <span className="flex-1">Grupper</span>
+              {groupSets.length > 0 && (
+                <span className="rounded-full bg-background px-1.5 text-[11px] tabular-nums text-muted">
+                  {groupSets.length}
+                </span>
+              )}
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setShowHeatmap(true)}
+              className="flex w-full items-center gap-1.5 rounded-md px-2 py-2 text-left text-sm font-medium hover:bg-background"
             >
               <svg viewBox="0 0 16 16" className="h-3.5 w-3.5 shrink-0 text-subtle" fill="none" stroke="currentColor" strokeWidth="1.5" aria-hidden>
                 <path d="M2 2h12v12H2z M2 6h12 M2 10h12 M6 2v12 M10 2v12" />
@@ -543,6 +580,47 @@ export default function Sidebar({ open, hidden, onClose, onHide, onAbout }: Prop
         >
           <PairHeatmap students={activeStudents} historyRows={pairHistory} />
         </Modal>
+      )}
+
+      {showGroups && activeClass && (
+        <Modal
+          title={`Grupper – ${activeClass.name}`}
+          description="Del klassen i grupper til prosjekter og aktiviteter. Gruppene har ingenting med pultene i klasserommet å gjøre."
+          onClose={() => setShowGroups(false)}
+          footer={
+            <button
+              type="button"
+              onClick={() => setShowGroups(false)}
+              className={secondaryButton()}
+            >
+              Lukk
+            </button>
+          }
+        >
+          <StudentGroups
+            onRequestDelete={(set) => {
+              // Samme grunn som ellers: bekreftelsen får stå alene.
+              setShowGroups(false);
+              setPendingGroupDelete(set);
+            }}
+          />
+        </Modal>
+      )}
+
+      {pendingGroupDelete && (
+        <ConfirmDialog
+          title={`Slette ${pendingGroupDelete.name}?`}
+          body={
+            <>
+              Gruppeinndelingen{" "}
+              <strong className="text-foreground">{pendingGroupDelete.name}</strong> slettes.
+              Elevene og klassekartene beholdes.
+            </>
+          }
+          confirmLabel="Slett"
+          onConfirm={doDeleteGroupSet}
+          onCancel={() => setPendingGroupDelete(null)}
+        />
       )}
 
       {showApart && activeClass && (

@@ -19,6 +19,7 @@ import {
   totalSeats,
 } from "@/lib/classroom";
 import ClassroomCanvas from "@/components/ClassroomCanvas";
+import ClassroomView from "@/components/ClassroomView";
 import { plural, primaryButton, secondaryButton } from "@/lib/ui";
 
 /** −/+ rundt en verdi. Verdien vises, så du ser hva du justerer. */
@@ -118,6 +119,9 @@ export default function ClassDetailPage() {
    */
   const [dragging, setDragging] = useState(false);
 
+  /** Fullskjermvisningen av kartet — til projektoren, uten noe å klikke på. */
+  const [showing, setShowing] = useState(false);
+
   if (loading)
     return (
       <p className="text-sm text-muted" role="status">
@@ -167,6 +171,19 @@ export default function ClassDetailPage() {
         </div>
 
         <div data-print-hide className="flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            onClick={() => setShowing(true)}
+            disabled={!activeChart}
+            title={
+              activeChart
+                ? "Vis klassekartet i fullskjerm, uten meny og verktøy"
+                : "Generer et klassekart først"
+            }
+            className={secondaryButton()}
+          >
+            Vis klassekart
+          </button>
           <button
             type="button"
             onClick={() => window.print()}
@@ -343,6 +360,17 @@ export default function ClassDetailPage() {
         onMoveStudent={moveStudent}
         onToggleLock={toggleLock}
       />
+
+      {showing && activeChart && (
+        <ClassroomView
+          className={activeClass.name}
+          desks={desks}
+          assignments={assignments}
+          studentsById={studentsById}
+          chartDate={new Date(activeChart.created_at).toLocaleDateString("nb-NO")}
+          onClose={() => setShowing(false)}
+        />
+      )}
     </div>
   );
 }

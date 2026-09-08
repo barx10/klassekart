@@ -26,6 +26,10 @@ import {
   fetchApartPairs,
   fetchAllStudents,
   fetchChartHistory,
+  fetchGroupSets,
+  suggestGroups as apiSuggestGroups,
+  saveGroupSet as apiSaveGroupSet,
+  deleteGroupSet as apiDeleteGroupSet,
   fetchContactTeachers,
   fetchClasses,
   fetchPairHistory,
@@ -43,6 +47,7 @@ import type {
   Desk,
   DeskAssignments,
   Gender,
+  GroupSet,
   PairHistoryRow,
   SchoolClass,
   SeatingChart,
@@ -91,6 +96,14 @@ interface AppDataValue {
   apartPairs: ApartPair[];
   addApartPair: (studentA: string, studentB: string) => Promise<void>;
   removeApartPair: (studentA: string, studentB: string) => Promise<void>;
+
+  /** Lagrede gruppeinndelinger for klassen — til prosjekter og aktiviteter. */
+  groupSets: GroupSet[];
+  /** Foreslår grupper på omtrent `size` elever. Lagrer ingenting. */
+  suggestGroups: (size: number) => Promise<string[][]>;
+  /** Lagrer en inndeling. Med `id` skrives den lagrede over i stedet. */
+  saveGroupSet: (name: string, groups: string[][], id?: string) => Promise<GroupSet>;
+  deleteGroupSet: (id: string) => Promise<void>;
   moveStudent: (
     from: { deskId: string; index: number },
     to: { deskId: string; index: number }
@@ -124,6 +137,7 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
   const [activeChartId, setActiveChartId] = useState<string | null>(null);
   const [pairHistory, setPairHistory] = useState<PairHistoryRow[]>([]);
   const [apartPairs, setApartPairs] = useState<ApartPair[]>([]);
+  const [groupSets, setGroupSets] = useState<GroupSet[]>([]);
   const [loadedClassId, setLoadedClassId] = useState<string | null>(null);
   const [generating, setGenerating] = useState(false);
   // Teller opp når lagringen er byttet ut under føttene på oss (import), slik
@@ -164,6 +178,7 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
     setActiveChartId(null);
     setPairHistory([]);
     setApartPairs([]);
+    setGroupSets([]);
     setLoadedClassId(null);
     setGenerateResult(null);
     await loadAll();
@@ -179,13 +194,15 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
       fetchChartHistory(activeClassId),
       fetchPairHistory(activeClassId),
       fetchApartPairs(activeClassId),
+      fetchGroupSets(activeClassId),
     ])
-      .then(([chartRows, history, apart]) => {
+      .then(([chartRows, history, apart, groups]) => {
         if (cancelled) return;
         setCharts(chartRows);
         setActiveChartId(chartRows[0]?.id ?? null);
         setPairHistory(history);
         setApartPairs(apart);
+        setGroupSets(groups);
         setLoadedClassId(activeClassId);
       })
       .catch((e) => {
@@ -407,6 +424,38 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
     [activeClassId]
   );
 
+  // --- Grupper -------------------------------------------------------------
+  // Forslaget lagres ikke og telles ikke i par-historikken: historikken handler
+  // om hvem som har sittet sammen ved bordet, og en prosjektgruppe er ikke et
+  // sete. Den leses for å spre elevene, men skrives ikke.
+
+  const suggestGroups = useCallback(
+    async (size: number) => {
+      if (!activeClassId) return [];
+      return apiSuggestGroups(activeClassId, size);
+    },
+    [activeClassId]
+  );
+
+  const saveGroupSet = useCallback(
+    async (name: string, groups: string[][], id?: string) => {
+      if (!activeClassId) throw new Error("Ingen klasse er valgt.");
+      const saved = await apiSaveGroupSet(activeClassId, name, groups, id);
+      setGroupSets(await fetchGroupSets(activeClassId));
+      return saved;
+    },
+    [activeClassId]
+  );
+
+  const deleteGroupSet = useCallback(
+    async (id: string) => {
+      if (!activeClassId) return;
+      await apiDeleteGroupSet(id);
+      setGroupSets((prev) => prev.filter((g) => g.id !== id));
+    },
+    [activeClassId]
+  );
+
   const showChart = useCallback((chartId: string) => setActiveChartId(chartId), []);
 
   const resetPairHistory = useCallback(async () => {
@@ -556,6 +605,10 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
       apartPairs,
       addApartPair,
       removeApartPair,
+      groupSets,
+      suggestGroups,
+      saveGroupSet,
+      deleteGroupSet,
       moveStudent,
       generate,
       generating,
@@ -594,6 +647,10 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
       apartPairs,
       addApartPair,
       removeApartPair,
+      groupSets,
+      suggestGroups,
+      saveGroupSet,
+      deleteGroupSet,
       moveStudent,
       generate,
       generating,

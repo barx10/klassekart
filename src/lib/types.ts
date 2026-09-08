@@ -72,6 +72,23 @@ export interface SeatingChart {
 }
 
 /**
+ * Klassen delt i grupper — til et prosjekt, en framføring eller en aktivitet.
+ *
+ * Gruppene hører til klassen og ikke til klasserommet: de har ingen pulter og
+ * ingen seter, og de flytter ingen elever i klassekartet. Settet lagres med et
+ * navn («Fotosyntese»), så læreren kan hente fram de samme gruppene neste time
+ * i stedet for å huske dem.
+ */
+export interface GroupSet {
+  id: string;
+  class_id: string;
+  name: string;
+  /** Elev-id-er, én liste per gruppe. Rekkefølgen er gruppenummeret. */
+  groups: string[][];
+  created_at: string;
+}
+
+/**
  * Et elevpar læreren har bestemt at ikke skal sitte sammen. «Sammen» betyr
  * samme bord, slik resten av appen regner par: par-historikken og varmekartet
  * teller to elever som sammen når de sitter ved samme pult.

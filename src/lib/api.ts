@@ -7,6 +7,7 @@ import {
   buildHistoryMap,
   countNewPairs,
   generateSeatingChart,
+  groupSizes,
   pairKey as canonicalPairKey,
   pairsFromGroups,
 } from "./seating";
@@ -14,6 +15,7 @@ import type {
   ApartPair,
   ContactTeacher,
   Desk,
+  GroupSet,
   DeskAssignments,
   Gender,
   PairHistoryRow,
@@ -111,6 +113,7 @@ export async function deleteClass(id: string): Promise<void> {
     data.charts = data.charts.filter((c) => c.class_id !== id);
     data.pairs = data.pairs.filter((p) => p.class_id !== id);
     data.apart_pairs = data.apart_pairs.filter((p) => p.class_id !== id);
+    data.groups = data.groups.filter((g) => g.class_id !== id);
   });
 }
 
@@ -506,5 +509,83 @@ export async function generateAndSaveChart(
     }
 
     return { chart, desks: roomyDesks, newPairs, totalPairs, brokenRules };
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Grupper
+// ---------------------------------------------------------------------------
+
+export async function fetchGroupSets(classId: string): Promise<GroupSet[]> {
+  return read((data) =>
+    data.groups
+      .filter((g) => g.class_id === classId)
+      .sort((a, b) => b.created_at.localeCompare(a.created_at))
+  );
+}
+
+/**
+ * Foreslår en gruppeinndeling: elevene fordeles på grupper på omtrent `size`
+ * med samme algoritme som klassekartet, så de som ofte har sittet sammen ikke
+ * havner i gruppe sammen igjen. Reglene om hvem som ikke skal sitte sammen
+ * gjelder også her — en elev læreren holder fra hverandre ved bordet, skal
+ * ikke settes i prosjektgruppe med den samme.
+ *
+ * Forslaget **lagres ikke**, og det telles ikke i par-historikken: historikken
+ * handler om hvem som har sittet sammen i klasserommet, og en prosjektgruppe
+ * er ikke et sete. Den leses, men skrives ikke.
+ */
+export async function suggestGroups(classId: string, size: number): Promise<string[][]> {
+  return read((data) => {
+    const students = data.students.filter((s) => s.class_id === classId).sort(byName);
+    if (students.length === 0) throw new Error("Klassen har ingen elever ennå.");
+
+    const apart = new Set(
+      data.apart_pairs
+        .filter((p) => p.class_id === classId)
+        .map((p) => canonicalPairKey(p.student_a_id, p.student_b_id))
+    );
+    const historyMap = buildHistoryMap(data.pairs.filter((p) => p.class_id === classId));
+
+    return generateSeatingChart(students, groupSizes(students.length, size), historyMap, {
+      apart,
+    }).filter((group) => group.length > 0);
+  });
+}
+
+/** Lagrer en ny gruppeinndeling, eller skriver over en som finnes fra før. */
+export async function saveGroupSet(
+  classId: string,
+  name: string,
+  groups: string[][],
+  id?: string
+): Promise<GroupSet> {
+  const trimmed = name.trim();
+  if (!trimmed) throw new Error("Gi gruppene et navn, for eksempel «Fotosyntese».");
+
+  return mutate((data) => {
+    const kept = groups.filter((g) => g.length > 0);
+    if (id) {
+      const found = data.groups.find((g) => g.id === id);
+      if (!found) throw new Error("Fant ikke gruppeinndelingen.");
+      found.name = trimmed;
+      found.groups = kept;
+      return found;
+    }
+    const created: GroupSet = {
+      id: newId(),
+      class_id: classId,
+      name: trimmed,
+      groups: kept,
+      created_at: new Date().toISOString(),
+    };
+    data.groups.push(created);
+    return created;
+  });
+}
+
+export async function deleteGroupSet(id: string): Promise<void> {
+  await mutate((data) => {
+    data.groups = data.groups.filter((g) => g.id !== id);
   });
 }
