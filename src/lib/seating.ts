@@ -79,6 +79,23 @@ export function apartViolations(groups: SeatingGroups, apart: Set<string>): [str
 }
 
 /**
+ * Deler `count` elever i grupper på omtrent `size`.
+ *
+ * Går det ikke opp, blir gruppene så jevne som mulig i stedet for at resten
+ * blir en gruppe for seg: 30 elever i firergrupper blir seks firere og to
+ * treere, ikke sju firere og én toer. En elev som står igjen alene har ingen
+ * å samarbeide med, og det er nettopp det gruppene er til for.
+ */
+export function groupSizes(count: number, size: number): number[] {
+  const perGroup = Math.max(2, Math.round(size));
+  if (count <= 0) return [];
+  const groups = Math.max(1, Math.ceil(count / perGroup));
+  const base = Math.floor(count / groups);
+  const rest = count % groups;
+  return Array.from({ length: groups }, (_, i) => base + (i < rest ? 1 : 0));
+}
+
+/**
  * Genererer et nytt klassekart: fordeler elevene på pultene i klasserommet og
  * bruker simulert herding (simulated annealing) for å minimere hvor mange
  * ganger de samme elevene har sittet sammen før. Elevene starter i tilfeldig

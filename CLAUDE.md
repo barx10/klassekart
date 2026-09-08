@@ -50,6 +50,8 @@ src/
     Sidebar.tsx                 Klasser, elever, tidligere kart, par-oversikt
     ApartPairs.tsx              Elevpar som ikke skal sitte ved samme bord
     ClassroomCanvas.tsx         Klasserommet: pulter, draging, seter
+    ClassroomView.tsx           Klassekartet i fullskjerm, til projektoren
+    StudentGroups.tsx           Grupper til prosjektarbeid
     StudentManager.tsx          Legg til/rediger elever (kompakt, for menyen)
     PairHeatmap.tsx             Varmekart over hvem som har sittet sammen
     ContactTeachers.tsx         Kontaktlærerne, og elevene hver av dem har
@@ -58,7 +60,8 @@ src/
   lib/
     app-data.tsx                All delt tilstand (se under)
     classroom.ts                Pult-geometri, merking av flere pulter, låser
-    seating.ts                  Fordelingsalgoritmen (simulert herding) + regler
+    seating.ts                  Fordelingsalgoritmen (simulert herding) + regler,
+                                og gruppestørrelsene grupperingen bruker
     api.ts                      Datalaget: klasser, elever, kart, par
     local-db.ts                 Lagring i nettleseren (IndexedDB) + sikkerhetskopi
     backup-file.ts              Får sikkerhetskopien ned på maskinen
@@ -212,6 +215,46 @@ er det algoritmen bruker for å spre elevene. **Manuelle flyttinger justerer
 den** (`adjustPairHistory`): par som forsvinner telles ned, nye telles opp.
 Uten det ville varmekartet vist parene slik de var da kartet ble generert.
 
+### Grupper til prosjektarbeid
+
+`groups` er lagrede gruppeinndelinger: `{ id, class_id, name, groups: string[][] }`.
+De hører til klassen og ikke til klasserommet — en gruppe har ingen pult og
+intet sete, og en inndeling flytter ingen elever i klassekartet.
+
+Fordelingen er den samme algoritmen som kartet (`suggestGroups` kaller
+`generateSeatingChart` med gruppestørrelser i stedet for pultplasser), så
+elever som ofte har sittet sammen havner i hver sin gruppe, og reglene om hvem
+som ikke skal sitte sammen gjelder også her.
+
+- **Gruppene telles ikke i par-historikken.** Historikken svarer på «hvem har
+  sittet sammen ved bordet», og et prosjekt er ikke et sete. Talte vi begge
+  deler i samme tall, ville varmekartet sagt noe annet enn det det påstår.
+  `suggestGroups` leser derfor historikken gjennom `read()` og skriver ingenting.
+- **`groupSizes` gjør gruppene jevne**, ikke like store med en rest til slutt:
+  30 elever i firergrupper blir seks firere og to treere. En elev som blir
+  alene igjen har ingen å samarbeide med, og det var nettopp poenget.
+- **Elever som kom til etterpå står som «ikke plassert»**, ikke skjult. En
+  lagret inndeling kan være eldre enn den nyeste eleven i klassen.
+- **Elever flyttes ved å velge navn og så gruppe**, ikke ved å dras. Det virker
+  likt med mus og tastatur; en dra-og-slipp ville trengt en egen tastaturvei
+  ved siden av seg.
+
+### Fullskjermvisningen
+
+«Vis klassekart» legger kartet over hele skjermen til projektoren, og er en
+**egen komponent** (`ClassroomView`) og ikke lerretet med verktøyene skrudd av.
+`ClassroomCanvas` er en editor: setene er knapper som kan dras, pultene har
+håndtak, og zoomen er tilpasset spalta ved siden av menya. På storskjermen skal
+kartet fylle både bredden og høyden, og ingenting skal kunne endres ved et uhell
+mens klassen ser på. Å bygge begge deler inn i samme komponent ville betydd en
+`readOnly`-flagg gjennom tusen linjer.
+
+Visningen ber om ekte fullskjerm (`requestFullscreen`), for det er fanelinja og
+adressefeltet som stjeler plassen på en projektor. Sier nettleseren nei — Safari
+på iPad gjør det — ligger overlegget uansett over hele vinduet. Lukker brukeren
+fullskjermen med F11, følger visningen etter, ellers ville den blitt liggende
+igjen i et vanlig vindu.
+
 ## Lagring
 
 `src/lib/local-db.ts` lagrer **hele datasettet som ett objekt** under én nøkkel
@@ -242,6 +285,13 @@ leses som «ingen låser».
 
 Versjon 4 la til `apart_pairs`. Eldre kopier mangler lista, og leses som «ingen
 regler».
+
+Versjon 5 la til `groups` — lagrede gruppeinndelinger. Eldre kopier mangler
+lista, og leses som «ingen grupper».
+
+`replaceAll()` må skrive **alle** listene. Reglene og gruppene hører til de
+samme klassene som resten; ble de ikke erstattet, ble de liggende igjen fra
+datasettet kopien nettopp tok over for, og pekte på elever som ikke finnes.
 
 **Sikkerhetskopien er hele datasettet, ikke én klasse.** Derfor står det ikke
 noe klassenavn i filnavnet, og derfor erstatter `replaceAll()` alt ved import.

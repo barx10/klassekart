@@ -3,6 +3,7 @@
 import type {
   ApartPair,
   ContactTeacher,
+  GroupSet,
   PairHistoryRow,
   SchoolClass,
   SeatingChart,
@@ -35,8 +36,10 @@ const KEY = "state";
  *    kopier mangler feltet, og leses som «ingen låser» (`validLocks`).
  * 4: `apart_pairs` kom til — elevpar som ikke skal sitte ved samme bord. Eldre
  *    kopier mangler lista, og leses som «ingen regler».
+ * 5: `groups` kom til — lagrede gruppeinndelinger til prosjektarbeid. Eldre
+ *    kopier mangler lista, og leses som «ingen grupper».
  */
-export const BACKUP_VERSION = 4;
+export const BACKUP_VERSION = 5;
 
 export interface LocalData {
   version: number;
@@ -46,6 +49,7 @@ export interface LocalData {
   pairs: PairHistoryRow[];
   contact_teachers: ContactTeacher[];
   apart_pairs: ApartPair[];
+  groups: GroupSet[];
 }
 
 export function emptyData(): LocalData {
@@ -57,6 +61,7 @@ export function emptyData(): LocalData {
     pairs: [],
     contact_teachers: [],
     apart_pairs: [],
+    groups: [],
   };
 }
 
@@ -127,6 +132,7 @@ function normalize(value: unknown): LocalData {
       ? raw.contact_teachers
       : contactTeachersFromNames(classes, students),
     apart_pairs: Array.isArray(raw.apart_pairs) ? raw.apart_pairs : [],
+    groups: Array.isArray(raw.groups) ? raw.groups : [],
   };
 }
 
@@ -234,5 +240,10 @@ export function replaceAll(data: LocalData): Promise<void> {
     current.charts = data.charts;
     current.pairs = data.pairs;
     current.contact_teachers = data.contact_teachers;
+    // Reglene og gruppene hører til de samme klassene som resten. Ble de ikke
+    // erstattet her, ble de liggende igjen fra datasettet kopien nettopp tok
+    // over for — pekende på elever som ikke finnes lenger.
+    current.apart_pairs = data.apart_pairs;
+    current.groups = data.groups;
   });
 }
