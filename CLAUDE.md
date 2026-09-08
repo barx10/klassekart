@@ -235,9 +235,14 @@ som ikke skal sitte sammen gjelder også her.
   alene igjen har ingen å samarbeide med, og det var nettopp poenget.
 - **Elever som kom til etterpå står som «ikke plassert»**, ikke skjult. En
   lagret inndeling kan være eldre enn den nyeste eleven i klassen.
-- **Elever flyttes ved å velge navn og så gruppe**, ikke ved å dras. Det virker
-  likt med mus og tastatur; en dra-og-slipp ville trengt en egen tastaturvei
-  ved siden av seg.
+- **Elever flyttes på to måter, og begge må bli stående.** Navnet kan dras til
+  en annen gruppe — slippes det på en elev, bytter de to — slik elevkortene
+  dras i klasserommet. Klikkveien (velg navn, velg gruppe) er tastaturveien:
+  et drag kan ingen gjøre med tastaturet, så fjernes den, blir gruppene umulige
+  å endre uten mus.
+- **Flagget som skiller drag fra klikk nullstilles ved `pointerdown`**, ikke i
+  klikket. Slippes navnet utenfor knappen det ble tatt fra, kommer det aldri
+  noe klikk — og det neste ekte klikket ville blitt spist.
 
 ### Fullskjermvisningen
 

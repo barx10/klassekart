@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { useAppData } from "@/lib/app-data";
 import { genderDotClass } from "@/lib/gender";
 import { ghostButton, inputClass, plural, primaryButton, secondaryButton } from "@/lib/ui";
@@ -25,6 +25,62 @@ import type { GroupSet, Student } from "@/lib/types";
 
 const MIN_SIZE = 2;
 const MAX_SIZE = 6;
+
+/**
+ * Hvor langt markøren må flyttes før det teller som et drag og ikke et klikk.
+ * Samme terskel som i klasserommet: uten den ville en skjelven hånd på klikket
+ * gjort at navnet ble dratt i stedet for valgt.
+ */
+const DRAG_THRESHOLD = 3;
+
+/** Gruppa «ikke plassert». Den er ingen gruppe, men et sted å slippe elever. */
+const UNPLACED = -1;
+
+/** Flytter en elev til en gruppe. `UNPLACED` tar hen ut av alle gruppene. */
+function withMoved(groups: string[][], studentId: string, groupIndex: number): string[][] {
+  const next = groups.map((g) => g.filter((id) => id !== studentId));
+  if (groupIndex >= 0 && next[groupIndex]) next[groupIndex] = [...next[groupIndex], studentId];
+  return next;
+}
+
+/**
+ * Bytter to elever med hverandre. Sto den ene utenfor gruppene, tar hen
+ * plassen til den andre, og den andre blir stående uplassert.
+ */
+function withSwapped(groups: string[][], a: string, b: string): string[][] {
+  const next = groups.map((g) => [...g]);
+  const find = (id: string) => next.findIndex((g) => g.includes(id));
+  const from = find(a);
+  const to = find(b);
+  if (from === -1 && to === -1) return groups;
+  if (from !== -1) next[from] = next[from].map((id) => (id === a ? b : id));
+  if (to !== -1) next[to] = next[to].map((id) => (id === b ? a : id));
+  return next;
+}
+
+/** Eleven og gruppa under markøren. Draget slippes på det som ligger der. */
+function targetAtPoint(x: number, y: number): { student: string | null; group: number | null } {
+  const el = document.elementFromPoint(x, y);
+  const nameEl = el?.closest<HTMLElement>("[data-student]");
+  const groupEl = el?.closest<HTMLElement>("[data-group]");
+  return {
+    student: nameEl?.dataset.student ?? null,
+    group: groupEl ? Number(groupEl.dataset.group) : null,
+  };
+}
+
+/** Navnet som dras med musa eller fingeren. */
+interface NameDrag {
+  studentId: string;
+  startX: number;
+  startY: number;
+  x: number;
+  y: number;
+  /** Terskelen er passert — dette er et drag, ikke et klikk. */
+  moved: boolean;
+  overStudent: string | null;
+  overGroup: number | null;
+}
 
 interface Draft {
   /** Settet som skrives over ved lagring. Mangler den, blir det et nytt sett. */
@@ -66,6 +122,9 @@ export default function StudentGroups({
   const [size, setSize] = useState(3);
   const [draft, setDraft] = useState<Draft | null>(null);
   const [picked, setPicked] = useState<string | null>(null);
+  const [drag, setDrag] = useState<NameDrag | null>(null);
+  /** Et fullført drag skal ikke også telle som et klikk på navnet. */
+  const dragged = useRef(false);
   const [busy, setBusy] = useState(false);
   const [announcement, setAnnouncement] = useState("");
 
@@ -102,12 +161,10 @@ export default function StudentGroups({
     }
   }
 
-  /** Flytter den valgte eleven til en gruppe (−1 er «ikke plassert»). */
+  /** Flytter den valgte eleven til en gruppe (`UNPLACED` er «ikke plassert»). */
   function moveTo(groupIndex: number) {
     if (!picked || !draft) return;
-    const groups = draft.groups.map((g) => g.filter((id) => id !== picked));
-    if (groupIndex >= 0) groups[groupIndex] = [...groups[groupIndex], picked];
-    setDraft({ ...draft, groups });
+    setDraft({ ...draft, groups: withMoved(draft.groups, picked, groupIndex) });
     setAnnouncement(
       `${pickedStudent?.name ?? "Eleven"} flyttet til ${
         groupIndex >= 0 ? `gruppe ${groupIndex + 1}` : "ikke plassert"
@@ -130,28 +187,89 @@ export default function StudentGroups({
       return;
     }
     // To navn etter hverandre bytter elevene med hverandre.
-    const groups = draft.groups.map((g) => [...g]);
-    const find = (id: string) => groups.findIndex((g) => g.includes(id));
-    const from = find(picked);
-    const to = find(studentId);
-
-    if (from === -1 && to === -1) return;
-    if (from === -1) {
-      // Den valgte sto uplassert: den tar plassen, og den andre blir uplassert.
-      groups[to] = groups[to].map((id) => (id === studentId ? picked : id));
-    } else if (to === -1) {
-      groups[from] = groups[from].map((id) => (id === picked ? studentId : id));
-    } else {
-      groups[from] = groups[from].map((id) => (id === picked ? studentId : id));
-      groups[to] = groups[to].map((id) => (id === studentId ? picked : id));
-    }
-    setDraft({ ...draft, groups });
+    setDraft({ ...draft, groups: withSwapped(draft.groups, picked, studentId) });
     setAnnouncement(
       `${byId.get(picked)?.name ?? "Eleven"} og ${
         byId.get(studentId)?.name ?? "eleven"
       } byttet gruppe.`
     );
     setPicked(null);
+  }
+
+  // --- Dra-og-slipp -------------------------------------------------------
+  // Samme framgangsmåte som elevkortene i klasserommet: dra navnet dit det
+  // skal. Klikkveien over blir stående ved siden av — den er tastaturveien, og
+  // et drag kan ingen gjøre med tastaturet.
+
+  function startDrag(e: React.PointerEvent, studentId: string) {
+    if (e.pointerType === "mouse" && e.button !== 0) return;
+    // Nullstilles her og ikke i klikket: slippes navnet utenfor knappen det ble
+    // tatt fra, kommer det aldri noe klikk å nullstille flagget i, og det neste
+    // ekte klikket ville blitt spist.
+    dragged.current = false;
+    e.currentTarget.setPointerCapture(e.pointerId);
+    setDrag({
+      studentId,
+      startX: e.clientX,
+      startY: e.clientY,
+      x: e.clientX,
+      y: e.clientY,
+      moved: false,
+      overStudent: null,
+      overGroup: null,
+    });
+  }
+
+  function moveDrag(e: React.PointerEvent) {
+    if (!drag) return;
+    const moved =
+      drag.moved ||
+      Math.abs(e.clientX - drag.startX) > DRAG_THRESHOLD ||
+      Math.abs(e.clientY - drag.startY) > DRAG_THRESHOLD;
+    if (!moved) return;
+
+    const over = targetAtPoint(e.clientX, e.clientY);
+    setDrag({
+      ...drag,
+      x: e.clientX,
+      y: e.clientY,
+      moved: true,
+      overStudent: over.student,
+      overGroup: over.group,
+    });
+  }
+
+  function endDrag(e: React.PointerEvent) {
+    if (!drag) return;
+    e.currentTarget.releasePointerCapture(e.pointerId);
+    setDrag(null);
+    if (!drag.moved || !draft) return;
+
+    // Klikket som kommer etter et drag skal ikke også løfte navnet.
+    dragged.current = true;
+
+    const { student, group } = targetAtPoint(e.clientX, e.clientY);
+    const name = byId.get(drag.studentId)?.name ?? "Eleven";
+
+    if (student && student !== drag.studentId) {
+      setDraft({ ...draft, groups: withSwapped(draft.groups, drag.studentId, student) });
+      setAnnouncement(`${name} og ${byId.get(student)?.name ?? "eleven"} byttet gruppe.`);
+      setPicked(null);
+      return;
+    }
+    if (group !== null && !draft.groups[group]?.includes(drag.studentId)) {
+      setDraft({ ...draft, groups: withMoved(draft.groups, drag.studentId, group) });
+      setAnnouncement(
+        `${name} flyttet til ${group >= 0 ? `gruppe ${group + 1}` : "ikke plassert"}.`
+      );
+      setPicked(null);
+    }
+  }
+
+  /** Klikk på navnet — men ikke det klikket som avslutter et drag. */
+  function clickName(studentId: string) {
+    if (dragged.current) return;
+    tapName(studentId);
   }
 
   async function lagre() {
@@ -237,10 +355,15 @@ export default function StudentGroups({
       {/* --- Inndelingen læreren jobber med --- */}
       {draft && (
         <div className="flex flex-col gap-3">
-          {picked && (
+          {picked ? (
             <p className="text-xs text-accent-text">
               {pickedStudent?.name} er valgt — velg en gruppe å flytte til, eller en annen elev å
               bytte med.
+            </p>
+          ) : (
+            <p className="text-xs text-subtle">
+              Dra et navn til en annen gruppe, eller slipp det på en elev for å bytte de to. Med
+              tastatur: Enter på navnet, og så Enter på eleven det skal byttes med.
             </p>
           )}
 
@@ -248,7 +371,12 @@ export default function StudentGroups({
             {draft.groups.map((group, i) => (
               <section
                 key={i}
-                className="flex flex-col gap-1.5 rounded-lg border border-border bg-surface p-2.5"
+                data-group={i}
+                className={`flex flex-col gap-1.5 rounded-lg border bg-surface p-2.5 ${
+                  drag?.moved && drag.overGroup === i && !group.includes(drag.studentId)
+                    ? "border-accent ring-1 ring-accent"
+                    : "border-border"
+                }`}
               >
                 <div className="flex items-center justify-between gap-2">
                   <h3 className="text-xs font-semibold uppercase tracking-wide text-subtle">
@@ -295,12 +423,20 @@ export default function StudentGroups({
                         <li key={id}>
                           <button
                             type="button"
-                            onClick={() => tapName(id)}
+                            data-student={id}
+                            onPointerDown={(e) => startDrag(e, id)}
+                            onPointerMove={moveDrag}
+                            onPointerUp={endDrag}
+                            onPointerCancel={endDrag}
+                            onClick={() => clickName(id)}
                             aria-pressed={isPicked}
-                            className={`flex w-full items-center rounded-md border px-2 py-1.5 text-left text-sm ${
-                              isPicked
-                                ? "border-accent bg-accent-soft text-accent-text"
-                                : "border-border bg-surface-raised hover:border-border-strong"
+                            title={`${student.name} — dra, eller trykk Enter, for å flytte`}
+                            className={`flex w-full cursor-grab touch-none items-center rounded-md border px-2 py-1.5 text-left text-sm select-none ${
+                              drag?.moved && drag.studentId === id
+                                ? "border-dashed border-accent/60 opacity-50"
+                                : isPicked || (drag?.moved && drag.overStudent === id)
+                                  ? "border-accent bg-accent-soft text-accent-text"
+                                  : "border-border bg-surface-raised hover:border-border-strong"
                             }`}
                           >
                             <Name student={student} />
@@ -315,7 +451,12 @@ export default function StudentGroups({
           </div>
 
           {unplaced.length > 0 && (
-            <section className="rounded-lg border border-dashed border-border bg-surface p-2.5">
+            <section
+              data-group={UNPLACED}
+              className={`rounded-lg border border-dashed bg-surface p-2.5 ${
+                drag?.moved && drag.overGroup === UNPLACED ? "border-accent ring-1 ring-accent" : "border-border"
+              }`}
+            >
               <div className="mb-1.5 flex items-center justify-between gap-2">
                 <h3 className="text-xs font-semibold uppercase tracking-wide text-subtle">
                   Ikke plassert
@@ -326,7 +467,7 @@ export default function StudentGroups({
                 {picked && draft.groups.some((g) => g.includes(picked)) && (
                   <button
                     type="button"
-                    onClick={() => moveTo(-1)}
+                    onClick={() => moveTo(UNPLACED)}
                     className="rounded px-1.5 py-0.5 text-[11px] font-medium text-accent-text hover:bg-accent-soft"
                   >
                     Flytt hit
@@ -338,12 +479,20 @@ export default function StudentGroups({
                   <li key={student.id}>
                     <button
                       type="button"
-                      onClick={() => tapName(student.id)}
+                      data-student={student.id}
+                      onPointerDown={(e) => startDrag(e, student.id)}
+                      onPointerMove={moveDrag}
+                      onPointerUp={endDrag}
+                      onPointerCancel={endDrag}
+                      onClick={() => clickName(student.id)}
                       aria-pressed={picked === student.id}
-                      className={`flex items-center rounded-md border px-2 py-1.5 text-left text-sm ${
-                        picked === student.id
-                          ? "border-accent bg-accent-soft text-accent-text"
-                          : "border-border bg-surface-raised hover:border-border-strong"
+                      title={`${student.name} — dra, eller trykk Enter, for å flytte`}
+                      className={`flex cursor-grab touch-none items-center rounded-md border px-2 py-1.5 text-left text-sm select-none ${
+                        drag?.moved && drag.studentId === student.id
+                          ? "border-dashed border-accent/60 opacity-50"
+                          : picked === student.id || (drag?.moved && drag.overStudent === student.id)
+                            ? "border-accent bg-accent-soft text-accent-text"
+                            : "border-border bg-surface-raised hover:border-border-strong"
                       }`}
                     >
                       <Name student={student} />
@@ -391,6 +540,16 @@ export default function StudentGroups({
               Lukk inndelingen
             </button>
           </div>
+        </div>
+      )}
+
+      {/* Navnet som følger markøren under draget, som elevkortet i klasserommet. */}
+      {drag?.moved && byId.get(drag.studentId) && (
+        <div
+          className="pointer-events-none fixed z-[60] rounded-md border border-accent bg-surface-raised px-2 py-1.5 text-sm font-medium shadow-lg"
+          style={{ left: drag.x + 12, top: drag.y + 12 }}
+        >
+          {byId.get(drag.studentId)!.name}
         </div>
       )}
 
