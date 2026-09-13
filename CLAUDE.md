@@ -258,6 +258,26 @@ tretti minutter om gangen), lager tidene av det, og fordeler elevene på dem.
 Etterpå justeres enkelttider for hånd, for det er slik en samtaleuke blir: de
 fleste tar tida de får, og et par familier kan bare tirsdag klokka halv fem.
 
+**Tidene henger på datoer, ikke på ukedagsnumre.** De lå først som «dag 3»
+regnet fra mandagen i oppsettet, og da flyttet en endring av uke-feltet hver
+eneste samtale som alt var avtalt: eleven som skulle onsdag 16. september havnet
+onsdagen etter. Nå står tidene i ro, uka er noe skjemaet bare *lager* tider ut
+fra, og et oppsett kan gå over flere uker.
+
+- **`week_start` + `weeks` er skjemaet, ikke fasiten.** «Lag tidene» fyller de
+  valgte ukedagene i så mange uker fra mandagen — resten av appen leser dagene ut
+  av tidene selv (`datesOf`, `weeksOf`), så en dag læreren har lagt til for hånd
+  i uka etter får sin egen spalte.
+- **Å skyve hele runden er en egen knapp** (`shiftWeeks`), som flytter både
+  skjemaet og hver enkelt dato. Det var det læreren egentlig ville da hen endret
+  uka; nå er det synlig, og ikke en bieffekt av et datofelt.
+- **Ukenummeret står over spaltene og på arket** (`isoWeek`, ISO 8601 som i
+  norske kalendere). To onsdager ser like ut, og det er nettopp den forskjellen
+  læreren og de foresatte må kunne lese.
+- **Dagsspalta er en funksjon som gir JSX, ikke en komponent inni komponenten.**
+  En nestet komponent er en ny type for hver tegning, og React river da spalta ned
+  og bygger den opp igjen — midt i klokkeslettet læreren skriver.
+
 - **Oppsettet gjelder én kontaktlærer om gangen** (`plan.teacher`). En klasse har
   gjerne to som tar hver sine samtaler, og da er det egne elever læreren skal
   sette opp. Utvalget følger navnet i `contact_teacher` på eleven, sammenlignet
@@ -278,7 +298,7 @@ fleste tar tida de får, og et par familier kan bare tirsdag klokka halv fem.
   Ingen holder ut en slik dag.
 - **`refill` lar hver elev beholde dagen sin** når tidene lages på nytt. Dagen er
   det første de foresatte skriver ned, og en endring fra 20 til 30 minutter skal
-  flytte klokkeslettene, ikke halve klassen til en annen ukedag.
+  flytte klokkeslettene, ikke halve klassen til en annen dag.
 - **En merknad på en tid setter den av**: fordelingen hopper over tider med
   merknad, og det er slik en pause eller et annet møte blokkeres i skjemaet.
 - **Eleven velges i en nedtrekksliste, ikke ved å dras.** Samme avveining som i
@@ -293,8 +313,8 @@ fleste tar tida de får, og et par familier kan bare tirsdag klokka halv fem.
   fra menya, og klassens egne oppsett gjelder.
 - **Arket er en egen blokk**, ikke redigeringen med feltene skrudd av. På papiret
   er det tida og navnet som er hele poenget, og en side full av nedtrekkslister
-  og «fjern»-kryss er ikke til å lese. Dagene ligger side om side, og A4 liggende
-  fra utskriftsreglene passer fem spalter.
+  og «fjern»-kryss er ikke til å lese. Dagene ligger side om side under uka si, og
+  A4 liggende fra utskriftsreglene passer fem spalter.
 - **Egen side og ikke et vindu.** Skjemaet er en uke bredt, og læreren blir
   sittende i det en stund av gangen.
 - **Feltene med hjelpetekst peker på feltet med `htmlFor`.** En `<label>` som
@@ -360,6 +380,12 @@ Versjon 6 la til `meetings` — samtaleoppsett. Eldre kopier mangler lista, og
 leses som «ingen samtaler». `normalizePlan()` fyller inn felter som mangler i et
 enkelt oppsett, og kaster oppsett som ikke er til å lese — et skjema uten dager
 eller med lengde 0 ville ellers veltet samtalesida.
+
+Versjon 7 ga samtaletidene dato i stedet for ukedagsnummer, og oppsettet feltet
+`weeks`. `normalizePlan()` regner om «dag 3» til datoen den dagen hadde i uka
+oppsettet gjaldt, så en kopi fra versjon 6 leses uten tap. Mangler oppsettet en
+uke — feltet var valgfritt i versjon 6 — brukes uka det ble laget i, som er den
+eneste pekepinnen vi har på når samtalene skulle være.
 
 `replaceAll()` må skrive **alle** listene. Reglene, gruppene og samtalene hører
 til de samme klassene som resten; ble de ikke erstattet, ble de liggende igjen

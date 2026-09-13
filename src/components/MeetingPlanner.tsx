@@ -8,23 +8,31 @@ import HelpTip from "./HelpTip";
 import {
   MAX_GAP,
   MAX_MINUTES,
+  MAX_WEEKS,
   MEETING_KINDS,
   MIN_MINUTES,
   WEEKDAYS,
+  addDays,
   buildSlots,
   clashingSlots,
+  datesOf,
   dayLabel,
   defaultMinutes,
   fillSlots,
   kindLabel,
   mondayOf,
   newSlotId,
+  nextWeekday,
+  rangeLabel,
   refill,
   slotEnd,
-  slotsForDay,
+  slotsForDate,
   toClock,
+  toDate,
   toMinutes,
   unplacedStudents,
+  weekLabel,
+  weeksOf,
   withStudentAt,
 } from "@/lib/meetings";
 import {
@@ -38,12 +46,19 @@ import {
 import type { MeetingKind, MeetingPlan, MeetingSlot } from "@/lib/types";
 
 /**
- * Samtaler: elevsamtaler og utviklingssamtaler satt opp i en arbeidsuke.
+ * Samtaler: elevsamtaler og utviklingssamtaler satt opp i en eller flere
+ * arbeidsuker.
  *
  * Læreren setter et skjema — fra 08.30 til 17.00, tjue minutter om gangen —
  * lager tidene av det, og fordeler elevene på dem. Etterpå justeres enkelttider
  * for hånd, for det er slik en samtaleuke faktisk blir: de fleste tar tida de
  * får, og et par familier kan bare tirsdag klokka halv fem.
+ *
+ * **Uke-feltet sier hvor skjemaet lager tider, og flytter ingen som står der.**
+ * Tidene henger på datoer (se `meetings.ts`). Før lå de som ukedagsnumre, og da
+ * flyttet et klikk på uka eleven som var avtalt onsdag 16. september til
+ * onsdagen etter. Skal hele runden skyves, er det en egen knapp som gjør det —
+ * synlig, og ikke som en bieffekt av et datofelt.
  *
  * **Oppsettet gjelder én kontaktlærer om gangen.** En klasse har gjerne to som
  * tar hver sine samtaler, og det er egne elever læreren skal sette opp. Utvalget
@@ -67,11 +82,28 @@ const SAVE_DELAY = 400;
 /** Navnet på en elev som ikke finnes lenger — se `option`-lista under. */
 const UNKNOWN = "Ukjent elev";
 
+/** «15.9. 09:00» — hvor en elev står fra før, kort nok for en nedtrekksliste. */
+function placedLabel(slot: MeetingSlot): string {
+  const date = toDate(slot.date);
+  if (!date) return slot.start;
+  return `${date.getDate()}.${date.getMonth() + 1}. ${slot.start}`;
+}
+
 function SlotCount({ used, total }: { used: number; total: number }) {
   return (
     <span className="shrink-0 text-[11px] tabular-nums text-subtle">
       {used}/{total}
     </span>
+  );
+}
+
+/** Overskrifta over en bolk i skjemaet, så feltene ikke flyter i én lang rad. */
+function FieldGroup({ title, children }: { title: string; children: React.ReactNode }) {
+  return (
+    <div className="flex flex-col gap-1.5">
+      <h3 className="text-[11px] font-semibold uppercase tracking-wide text-subtle">{title}</h3>
+      <div className="flex flex-wrap items-end gap-3">{children}</div>
+    </div>
   );
 }
 
@@ -139,6 +171,17 @@ export default function MeetingPlanner() {
       if (slot.student_id) map.set(slot.student_id, slot);
     }
     return map;
+  }, [plan]);
+
+  /**
+   * Dagene oppsettet har tider på, gruppert i uker. Utledet av tidene og ikke
+   * av skjemaet: en dag læreren har lagt til selv i uka etter skal ha sin egen
+   * spalte, selv om skjemaet bare lager tider i én uke.
+   */
+  const weeks = useMemo(() => weeksOf(datesOf(plan?.slots ?? [])), [plan]);
+  const lastDate = useMemo(() => {
+    const dates = datesOf(plan?.slots ?? []);
+    return dates[dates.length - 1] ?? plan?.week_start ?? "";
   }, [plan]);
 
   const clashes = useMemo(() => clashingSlots(plan?.slots ?? []), [plan]);
@@ -230,10 +273,25 @@ export default function MeetingPlanner() {
     });
   }
 
-  /** Ny tid etter den siste den dagen, ellers først i arbeidsdagen. */
-  function addSlot(day: number) {
+  /**
+   * Skyver hele runden en uke fram eller tilbake — datoene og skjemaet sammen.
+   * Dette er handlingen læreren egentlig var ute etter da hen endret uka og
+   * fikk se at ingenting flyttet seg: en runde som må utsettes, utsettes i sin
+   * helhet.
+   */
+  function shiftWeeks(delta: number) {
     if (!plan) return;
-    const inDay = slotsForDay(plan.slots, day);
+    update({
+      ...plan,
+      week_start: addDays(plan.week_start, delta * 7) || plan.week_start,
+      slots: plan.slots.map((s) => ({ ...s, date: addDays(s.date, delta * 7) || s.date })),
+    });
+  }
+
+  /** Ny tid etter den siste den dagen, ellers først i arbeidsdagen. */
+  function addSlot(date: string) {
+    if (!plan) return;
+    const inDay = slotsForDate(plan.slots, date);
     const last = inDay[inDay.length - 1];
     const start = last
       ? toClock(toMinutes(last.start) + last.minutes + plan.gap)
@@ -242,9 +300,19 @@ export default function MeetingPlanner() {
       ...plan,
       slots: [
         ...plan.slots,
-        { id: newSlotId(), day, start, minutes: plan.minutes, student_id: null, note: "" },
+        { id: newSlotId(), date, start, minutes: plan.minutes, student_id: null, note: "" },
       ],
     });
+  }
+
+  /**
+   * Én dag til, etter den siste dagen som har tider. Det er slik en runde som
+   * ikke fikk plass utvides: en familie som bare kan mandagen etter, trenger
+   * ikke et helt nytt oppsett.
+   */
+  function addDay() {
+    const date = nextWeekday(lastDate);
+    if (date) addSlot(date);
   }
 
   function removeSlot(id: string) {
@@ -287,7 +355,6 @@ export default function MeetingPlanner() {
     }
   }
 
-  const days = plan ? WEEKDAYS.filter((d) => plan.days.includes(d.day)) : [];
   const totalSlots = plan?.slots.length ?? 0;
   const usedSlots = plan?.slots.filter((s) => s.student_id).length ?? 0;
 
@@ -296,6 +363,139 @@ export default function MeetingPlanner() {
       <p className="text-sm text-muted">
         Legg inn elevene i klassen først — det er navnene deres som settes inn i tidene.
       </p>
+    );
+  }
+
+  /**
+   * Én dagsspalte med tidene sine.
+   *
+   * En vanlig funksjon som gir JSX, ikke en komponent inni komponenten: en
+   * nestet komponent er en ny type for hver tegning, og React river da spalta
+   * ned og bygger den opp igjen — midt i et klokkeslett læreren skriver.
+   */
+  function dayColumn(date: string) {
+    if (!plan) return null;
+    const inDay = slotsForDate(plan.slots, date);
+    const label = dayLabel(date);
+
+    return (
+      <section
+        key={date}
+        className="flex flex-col gap-2 rounded-xl border border-border bg-surface p-2.5"
+      >
+        <div className="flex items-baseline justify-between gap-2">
+          <h3 className="truncate text-sm font-semibold">{label}</h3>
+          <SlotCount used={inDay.filter((s) => s.student_id).length} total={inDay.length} />
+        </div>
+
+        {inDay.length === 0 ? (
+          <p className="text-xs text-subtle">Ingen tider denne dagen.</p>
+        ) : (
+          <ul className="flex flex-col gap-1.5">
+            {inDay.map((slot) => {
+              const student = slot.student_id ? byId.get(slot.student_id) : undefined;
+              const unknown = Boolean(slot.student_id) && !student;
+              return (
+                <li
+                  key={slot.id}
+                  className={`flex flex-col gap-1 rounded-lg border px-2 py-1.5 ${
+                    clashes.has(slot.id)
+                      ? "border-danger bg-danger-soft"
+                      : slot.student_id
+                        ? "border-border bg-surface-raised"
+                        : "border-dashed border-border bg-surface-raised"
+                  }`}
+                >
+                  <div className="flex items-center gap-1">
+                    <input
+                      type="time"
+                      step={300}
+                      value={slot.start}
+                      onChange={(e) => changeSlot(slot.id, { start: e.target.value })}
+                      aria-label={`Starter, ${label}`}
+                      className={`${inputClassSm} w-[6.5rem] tabular-nums`}
+                    />
+                    <span className="text-xs text-subtle" aria-hidden>
+                      –
+                    </span>
+                    <input
+                      type="time"
+                      step={300}
+                      value={slotEnd(slot)}
+                      onChange={(e) => setEnd(slot, e.target.value)}
+                      aria-label={`Slutter, ${label}`}
+                      className={`${inputClassSm} w-[6.5rem] tabular-nums`}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => removeSlot(slot.id)}
+                      aria-label={`Fjern tida ${slot.start} ${label}`}
+                      title="Fjern tida"
+                      className="ml-auto rounded p-1 text-subtle hover:bg-danger-soft hover:text-danger"
+                    >
+                      <svg
+                        viewBox="0 0 16 16"
+                        className="h-3 w-3"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="1.8"
+                        aria-hidden
+                      >
+                        <path d="M4 4l8 8M12 4l-8 8" strokeLinecap="round" />
+                      </svg>
+                    </button>
+                  </div>
+
+                  <select
+                    value={slot.student_id ?? ""}
+                    onChange={(e) => setStudent(slot.id, e.target.value || null)}
+                    aria-label={`Elev ${slot.start} ${label}`}
+                    className={inputClassSm}
+                  >
+                    <option value="">— ledig —</option>
+                    {unknown && (
+                      // Eleven er slettet i en eldre utgave av lagringen. Vises
+                      // som valg, ellers ville feltet stått tomt samtidig som
+                      // tida var opptatt.
+                      <option value={slot.student_id ?? ""}>{UNKNOWN}</option>
+                    )}
+                    {/* Eleven som står i tida er alltid med, også når hen hører
+                        til en annen kontaktlærer enn den oppsettet gjelder —
+                        ellers ville feltet stått tomt for en opptatt tid. */}
+                    {(student && !students.includes(student)
+                      ? [student, ...students]
+                      : students
+                    ).map((s) => {
+                      const at = placedIn.get(s.id);
+                      const elsewhere = at && at.id !== slot.id;
+                      return (
+                        <option key={s.id} value={s.id}>
+                          {s.name}
+                          {elsewhere ? ` · ${placedLabel(at)}` : ""}
+                        </option>
+                      );
+                    })}
+                  </select>
+
+                  {(showNotes || slot.note.trim()) && (
+                    <input
+                      value={slot.note}
+                      onChange={(e) => changeSlot(slot.id, { note: e.target.value })}
+                      placeholder="Merknad, f.eks. pause"
+                      aria-label={`Merknad ${slot.start} ${label}`}
+                      className={inputClassSm}
+                    />
+                  )}
+                </li>
+              );
+            })}
+          </ul>
+        )}
+
+        <button type="button" onClick={() => addSlot(date)} className={ghostButton("sm")}>
+          + Legg til tid
+        </button>
+      </section>
     );
   }
 
@@ -361,9 +561,9 @@ export default function MeetingPlanner() {
           {/* --- Skjemaet tidene lages av --- */}
           <div
             data-print-hide
-            className="flex flex-col gap-3 rounded-xl border border-border bg-surface px-3 py-3"
+            className="flex flex-col gap-4 rounded-xl border border-border bg-surface px-3 py-3"
           >
-            <div className="flex flex-wrap items-end gap-3">
+            <FieldGroup title="Samtalen">
               {/* Navnet trenger en bunn å stå på: med `min-w-0` alene ble feltet
                   presset ned til tre bokstaver ved siden av «Type» på en telefon. */}
               <label className="min-w-[12rem] flex-1">
@@ -396,8 +596,6 @@ export default function MeetingPlanner() {
                 </select>
               </label>
 
-              {/* Kontaktlæreren står ved siden av typen: begge svarer på hva
-                  slags runde dette er, før skjemaet sier når den går. */}
               <div>
                 <span className="mb-1 flex items-center gap-1 text-xs text-muted">
                   <label htmlFor={teacherId}>Kontaktlærer</label>
@@ -429,6 +627,92 @@ export default function MeetingPlanner() {
                     )}
                 </select>
               </div>
+            </FieldGroup>
+
+            <FieldGroup title="Skjemaet «Lag tidene» fyller">
+              <div>
+                <span className="mb-1 flex items-center gap-1 text-xs text-muted">
+                  <label htmlFor={weekId}>Starter uke</label>
+                  <HelpTip label="Hva gjør uke-feltet?">
+                    Uka sier hvor <strong className="text-foreground">nye</strong> tider lages, og
+                    flytter ingen tid som alt står i oversikten — de har sin egen dato, og kan være
+                    avtalt med noen. Skal hele runden utsettes, bruker du «Flytt tidene» under.
+                    Treffer du en annen ukedag i kalenderen, starter oppsettet på mandagen i den uka.
+                  </HelpTip>
+                </span>
+                <div className="flex items-center gap-1">
+                  <button
+                    type="button"
+                    onClick={() => change({ week_start: addDays(plan.week_start, -7) })}
+                    aria-label="Uka før"
+                    title="Uka før"
+                    className="rounded-md border border-border bg-surface-raised px-2 py-2 text-muted hover:bg-background hover:text-foreground"
+                  >
+                    ‹
+                  </button>
+                  <input
+                    id={weekId}
+                    type="date"
+                    value={plan.week_start}
+                    onChange={(e) => {
+                      // Et tomt felt er ingen uke å lage tider i. Da beholder vi
+                      // den forrige i stedet for å stå igjen uten skjema.
+                      const monday = mondayOf(e.target.value);
+                      if (monday) change({ week_start: monday });
+                    }}
+                    className={`${inputClass} w-40`}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => change({ week_start: addDays(plan.week_start, 7) })}
+                    aria-label="Uka etter"
+                    title="Uka etter"
+                    className="rounded-md border border-border bg-surface-raised px-2 py-2 text-muted hover:bg-background hover:text-foreground"
+                  >
+                    ›
+                  </button>
+                  <span className="ml-1 whitespace-nowrap text-xs font-medium text-accent-text">
+                    {weekLabel(plan.week_start)}
+                  </span>
+                </div>
+              </div>
+
+              <label>
+                <span className="mb-1 block text-xs text-muted">Antall uker</span>
+                <select
+                  value={plan.weeks}
+                  onChange={(e) => change({ weeks: Number(e.target.value) || 1 })}
+                  className={`${inputClass} w-28`}
+                >
+                  {Array.from({ length: MAX_WEEKS }, (_, i) => i + 1).map((n) => (
+                    <option key={n} value={n}>
+                      {plural(n, "uke", "uker")}
+                    </option>
+                  ))}
+                </select>
+              </label>
+
+              <label>
+                <span className="mb-1 block text-xs text-muted">Fra</span>
+                <input
+                  type="time"
+                  step={300}
+                  value={plan.day_start}
+                  onChange={(e) => change({ day_start: e.target.value })}
+                  className={`${inputClass} w-28`}
+                />
+              </label>
+
+              <label>
+                <span className="mb-1 block text-xs text-muted">Til</span>
+                <input
+                  type="time"
+                  step={300}
+                  value={plan.day_end}
+                  onChange={(e) => change({ day_end: e.target.value })}
+                  className={`${inputClass} w-28`}
+                />
+              </label>
 
               <label>
                 <span className="mb-1 block text-xs text-muted">Lengde</span>
@@ -473,64 +757,24 @@ export default function MeetingPlanner() {
                 </span>
               </label>
 
-              <label>
-                <span className="mb-1 block text-xs text-muted">Fra</span>
-                <input
-                  type="time"
-                  step={300}
-                  value={plan.day_start}
-                  onChange={(e) => change({ day_start: e.target.value })}
-                  className={`${inputClass} w-28`}
-                />
-              </label>
+              <fieldset className="flex flex-wrap items-center gap-x-3 gap-y-1.5 pb-1.5">
+                <legend className="sr-only">Ukedager</legend>
+                <span className="text-xs text-muted">Dager</span>
+                {WEEKDAYS.map((d) => (
+                  <label key={d.day} className="flex items-center gap-1.5 text-sm">
+                    <input
+                      type="checkbox"
+                      checked={plan.days.includes(d.day)}
+                      onChange={() => toggleDay(d.day)}
+                      className="h-3.5 w-3.5 accent-[var(--accent)]"
+                    />
+                    {d.name}
+                  </label>
+                ))}
+              </fieldset>
+            </FieldGroup>
 
-              <label>
-                <span className="mb-1 block text-xs text-muted">Til</span>
-                <input
-                  type="time"
-                  step={300}
-                  value={plan.day_end}
-                  onChange={(e) => change({ day_end: e.target.value })}
-                  className={`${inputClass} w-28`}
-                />
-              </label>
-
-              <div>
-                <span className="mb-1 flex items-center gap-1 text-xs text-muted">
-                  <label htmlFor={weekId}>Uke</label>
-                  <HelpTip label="Hva gjør datoen?">
-                    Velger du en dato, får dagene datoer på seg — «Mandag 14. sep.» — slik de skal
-                    stå på arket foresatte får. Treffer du en annen ukedag, flyttes oppsettet til
-                    mandagen i den uka. La feltet stå tomt om du bare vil ha ukedagene.
-                  </HelpTip>
-                </span>
-                <input
-                  id={weekId}
-                  type="date"
-                  value={plan.week_start}
-                  onChange={(e) => change({ week_start: mondayOf(e.target.value) })}
-                  className={`${inputClass} w-40`}
-                />
-              </div>
-            </div>
-
-            <fieldset className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
-              <legend className="sr-only">Ukedager</legend>
-              <span className="text-xs text-muted">Dager</span>
-              {WEEKDAYS.map((d) => (
-                <label key={d.day} className="flex items-center gap-1.5 text-sm">
-                  <input
-                    type="checkbox"
-                    checked={plan.days.includes(d.day)}
-                    onChange={() => toggleDay(d.day)}
-                    className="h-3.5 w-3.5 accent-[var(--accent)]"
-                  />
-                  {d.name}
-                </label>
-              ))}
-            </fieldset>
-
-            <div className="flex flex-wrap items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2 border-t border-border pt-3">
               <button
                 type="button"
                 onClick={() => (totalSlots > 0 ? setConfirmRebuild(true) : rebuild())}
@@ -560,6 +804,31 @@ export default function MeetingPlanner() {
               >
                 Fjern ledige tider
               </button>
+
+              {/* Å skyve hele runden er en egen handling, ikke en bieffekt av
+                  uke-feltet: her er det datoene som faktisk flytter seg. */}
+              <span className="flex items-center gap-1 text-xs text-muted">
+                Flytt tidene
+                <button
+                  type="button"
+                  onClick={() => shiftWeeks(-1)}
+                  disabled={totalSlots === 0}
+                  title="Flytt alle tidene en uke tilbake"
+                  className={secondaryButton("sm")}
+                >
+                  − 1 uke
+                </button>
+                <button
+                  type="button"
+                  onClick={() => shiftWeeks(1)}
+                  disabled={totalSlots === 0}
+                  title="Flytt alle tidene en uke fram"
+                  className={secondaryButton("sm")}
+                >
+                  + 1 uke
+                </button>
+              </span>
+
               <button
                 type="button"
                 onClick={clearStudents}
@@ -594,7 +863,7 @@ export default function MeetingPlanner() {
               {students.length - unplaced.length} av {plural(students.length, "elev", "elever")} satt
               opp
               {plan.teacher.trim() ? ` hos ${plan.teacher}` : " i klassen"} ·{" "}
-              {plural(totalSlots, "tid", "tider")} i uka
+              {plural(totalSlots, "tid", "tider")} fordelt på {plural(weeks.length, "uke", "uker")}
             </span>
             <span className={saved ? "text-subtle" : "text-accent-text"}>
               {saved ? "Lagret" : "Lagrer …"}
@@ -622,142 +891,38 @@ export default function MeetingPlanner() {
             </p>
           )}
 
-          {/* --- Uka --- */}
-          <div
-            data-print-hide
-            className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-5"
-          >
-            {days.map(({ day, name }) => {
-              const inDay = slotsForDay(plan.slots, day);
-              return (
-                <section
-                  key={day}
-                  className="flex flex-col gap-2 rounded-xl border border-border bg-surface p-2.5"
-                >
-                  <div className="flex items-baseline justify-between gap-2">
-                    <h2 className="truncate text-sm font-semibold">
-                      {dayLabel(plan.week_start, day)}
-                    </h2>
-                    <SlotCount
-                      used={inDay.filter((s) => s.student_id).length}
-                      total={inDay.length}
-                    />
-                  </div>
+          {/* --- Ukene --- */}
+          <div data-print-hide className="flex flex-col gap-4">
+            {weeks.length === 0 && (
+              <p className="text-sm text-muted">
+                Ingen tider ennå. Trykk «Lag tidene» for å fylle uka fra skjemaet over.
+              </p>
+            )}
 
-                  {inDay.length === 0 ? (
-                    <p className="text-xs text-subtle">Ingen tider denne dagen.</p>
-                  ) : (
-                    <ul className="flex flex-col gap-1.5">
-                      {inDay.map((slot) => {
-                        const student = slot.student_id ? byId.get(slot.student_id) : undefined;
-                        const unknown = Boolean(slot.student_id) && !student;
-                        return (
-                          <li
-                            key={slot.id}
-                            className={`flex flex-col gap-1 rounded-lg border px-2 py-1.5 ${
-                              clashes.has(slot.id)
-                                ? "border-danger bg-danger-soft"
-                                : slot.student_id
-                                  ? "border-border bg-surface-raised"
-                                  : "border-dashed border-border bg-surface-raised"
-                            }`}
-                          >
-                            <div className="flex items-center gap-1">
-                              <input
-                                type="time"
-                                step={300}
-                                value={slot.start}
-                                onChange={(e) => changeSlot(slot.id, { start: e.target.value })}
-                                aria-label={`Starter, ${name}`}
-                                className={`${inputClassSm} w-[6.5rem] tabular-nums`}
-                              />
-                              <span className="text-xs text-subtle" aria-hidden>
-                                –
-                              </span>
-                              <input
-                                type="time"
-                                step={300}
-                                value={slotEnd(slot)}
-                                onChange={(e) => setEnd(slot, e.target.value)}
-                                aria-label={`Slutter, ${name}`}
-                                className={`${inputClassSm} w-[6.5rem] tabular-nums`}
-                              />
-                              <button
-                                type="button"
-                                onClick={() => removeSlot(slot.id)}
-                                aria-label={`Fjern tida ${slot.start} ${name.toLowerCase()}`}
-                                title="Fjern tida"
-                                className="ml-auto rounded p-1 text-subtle hover:bg-danger-soft hover:text-danger"
-                              >
-                                <svg
-                                  viewBox="0 0 16 16"
-                                  className="h-3 w-3"
-                                  fill="none"
-                                  stroke="currentColor"
-                                  strokeWidth="1.8"
-                                  aria-hidden
-                                >
-                                  <path d="M4 4l8 8M12 4l-8 8" strokeLinecap="round" />
-                                </svg>
-                              </button>
-                            </div>
+            {weeks.map(({ monday, dates }) => (
+              <section key={monday} className="flex flex-col gap-2">
+                <h2 className="flex flex-wrap items-baseline gap-2 border-b border-border pb-1">
+                  <span className="text-sm font-semibold">{weekLabel(monday)}</span>
+                  <span className="text-xs text-subtle">{rangeLabel(dates)}</span>
+                </h2>
+                <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-5">
+                  {dates.map((date) => dayColumn(date))}
+                </div>
+              </section>
+            ))}
 
-                            <select
-                              value={slot.student_id ?? ""}
-                              onChange={(e) => setStudent(slot.id, e.target.value || null)}
-                              aria-label={`Elev ${slot.start} ${name.toLowerCase()}`}
-                              className={inputClassSm}
-                            >
-                              <option value="">— ledig —</option>
-                              {unknown && (
-                                // Eleven er slettet i en eldre utgave av lagringen.
-                                // Vises som valg, ellers ville feltet stått tomt
-                                // samtidig som tida var opptatt.
-                                <option value={slot.student_id ?? ""}>{UNKNOWN}</option>
-                              )}
-              {/* Eleven som står i tida er alltid med, også når hen hører til
-                  en annen kontaktlærer enn den oppsettet gjelder — ellers ville
-                  feltet stått tomt for en tid som er opptatt. */}
-                              {(student && !students.includes(student)
-                                ? [student, ...students]
-                                : students
-                              ).map((s) => {
-                                const at = placedIn.get(s.id);
-                                const elsewhere = at && at.id !== slot.id;
-                                return (
-                                  <option key={s.id} value={s.id}>
-                                    {s.name}
-                                    {elsewhere
-                                      ? ` · ${
-                                          WEEKDAYS.find((d) => d.day === at.day)?.short ?? ""
-                                        } ${at.start}`
-                                      : ""}
-                                  </option>
-                                );
-                              })}
-                            </select>
-
-                            {(showNotes || slot.note.trim()) && (
-                              <input
-                                value={slot.note}
-                                onChange={(e) => changeSlot(slot.id, { note: e.target.value })}
-                                placeholder="Merknad, f.eks. pause"
-                                aria-label={`Merknad ${slot.start} ${name.toLowerCase()}`}
-                                className={inputClassSm}
-                              />
-                            )}
-                          </li>
-                        );
-                      })}
-                    </ul>
-                  )}
-
-                  <button type="button" onClick={() => addSlot(day)} className={ghostButton("sm")}>
-                    + Legg til tid
-                  </button>
-                </section>
-              );
-            })}
+            {totalSlots > 0 && (
+              <div>
+                <button type="button" onClick={addDay} className={secondaryButton("sm")}>
+                  + Legg til dagen etter
+                </button>
+                {/* Dagsnavnet ender alt på punktum («tirsdag 6. okt.»), så
+                    setninga får ikke ett til. */}
+                <span className="ml-2 text-xs text-subtle">
+                  Får ikke alle plass? Legg på {dayLabel(nextWeekday(lastDate)).toLowerCase()}
+                </span>
+              </div>
+            )}
           </div>
 
           {unplaced.length > 0 && (
@@ -773,7 +938,7 @@ export default function MeetingPlanner() {
               </h2>
               <p className="mb-2 text-xs text-subtle">
                 {totalSlots - usedSlots === 0
-                  ? "Det er ingen ledige tider igjen. Lag flere tider, eller utvid arbeidsdagen."
+                  ? "Det er ingen ledige tider igjen. Legg til en dag under, eller flere uker i skjemaet."
                   : "Trykk «Fordel elevene», eller velg dem i en ledig tid."}
               </p>
               <ul className="flex flex-wrap gap-1">
@@ -802,34 +967,46 @@ export default function MeetingPlanner() {
                 {plural(plan.minutes, "minutt", "minutter")} per samtale
               </p>
             </div>
-            <div
-              className="grid gap-3"
-              style={{ gridTemplateColumns: `repeat(${Math.max(1, days.length)}, minmax(0, 1fr))` }}
-            >
-              {days.map(({ day }) => (
-                <div key={day} className="break-inside-avoid">
-                  <h2 className="mb-1 border-b border-border pb-0.5 text-[13px] font-semibold">
-                    {dayLabel(plan.week_start, day)}
-                  </h2>
-                  <ul className="flex flex-col">
-                    {slotsForDay(plan.slots, day).map((slot) => {
-                      const student = slot.student_id ? byId.get(slot.student_id) : undefined;
-                      return (
-                        <li
-                          key={slot.id}
-                          className="flex gap-2 border-b border-border py-1 text-[12px]"
-                        >
-                          <span className="shrink-0 tabular-nums">{slot.start}</span>
-                          <span className="min-w-0 flex-1 truncate">
-                            {student?.name ?? (slot.student_id ? UNKNOWN : slot.note)}
-                          </span>
-                        </li>
-                      );
-                    })}
-                  </ul>
+
+            {weeks.map(({ monday, dates }) => (
+              <div key={monday} className="mb-4">
+                {/* Ukenummeret står på arket også: to onsdager ser like ut, og
+                    det er den forskjellen foresatte må kunne lese. */}
+                <p className="mb-1 text-[13px] font-semibold">
+                  {weekLabel(monday)} <span className="font-normal">· {rangeLabel(dates)}</span>
+                </p>
+                <div
+                  className="grid gap-3"
+                  style={{
+                    gridTemplateColumns: `repeat(${Math.max(1, dates.length)}, minmax(0, 1fr))`,
+                  }}
+                >
+                  {dates.map((date) => (
+                    <div key={date} className="break-inside-avoid">
+                      <h2 className="mb-1 border-b border-border pb-0.5 text-[13px] font-semibold">
+                        {dayLabel(date)}
+                      </h2>
+                      <ul className="flex flex-col">
+                        {slotsForDate(plan.slots, date).map((slot) => {
+                          const student = slot.student_id ? byId.get(slot.student_id) : undefined;
+                          return (
+                            <li
+                              key={slot.id}
+                              className="flex gap-2 border-b border-border py-1 text-[12px]"
+                            >
+                              <span className="shrink-0 tabular-nums">{slot.start}</span>
+                              <span className="min-w-0 flex-1 truncate">
+                                {student?.name ?? (slot.student_id ? UNKNOWN : slot.note)}
+                              </span>
+                            </li>
+                          );
+                        })}
+                      </ul>
+                    </div>
+                  ))}
                 </div>
-              ))}
-            </div>
+              </div>
+            ))}
           </div>
         </>
       )}
@@ -839,9 +1016,10 @@ export default function MeetingPlanner() {
           title="Lage tidene på nytt?"
           body={
             <>
-              Alle tidene i oppsettet settes opp på nytt fra skjemaet, og tider du har flyttet for
-              hånd eller skrevet merknad på forsvinner. Elevene som står oppført beholder dagen
-              sin, og settes inn igjen i tidene den dagen får.
+              Alle tidene i oppsettet settes opp på nytt fra skjemaet — {weekLabel(plan.week_start)}{" "}
+              og {plural(plan.weeks, "uke", "uker")} fram — og tider du har flyttet for hånd eller
+              skrevet merknad på forsvinner. Elevene som står oppført beholder dagen sin, og settes
+              inn igjen i tidene den dagen får.
             </>
           }
           confirmLabel="Lag tidene"
