@@ -47,6 +47,8 @@ export default function PersonvernPage() {
             bare til fargeprikken — fordelingen av elever ser ikke på det.</li>
           <li>Pultoppsettet i klasserommet.</li>
           <li>Klassekartene du genererer, og hvor mange ganger hvert elevpar har sittet sammen.</li>
+          <li>Gruppeinndelinger du lagrer, og samtaleoppsett — hvilken dag og hvilket klokkeslett
+            hver elev har fått til elevsamtale eller utviklingssamtale.</li>
         </ul>
         <p>
           Et klassekart trenger ikke fullt navn. Fornavn, eller fornavn og en forbokstav der to

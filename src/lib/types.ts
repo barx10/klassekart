@@ -125,3 +125,60 @@ export interface ContactTeacher {
   name: string;
   created_at: string;
 }
+
+/**
+ * Hva slags samtale en tid er satt av til. Lengden følger av typen: en
+ * elevsamtale varer gjerne 20 minutter, en utviklingssamtale 30, siden de
+ * foresatte er med. Læreren kan overstyre begge deler.
+ */
+export type MeetingKind = "elevsamtale" | "utviklingssamtale";
+
+/**
+ * Én tid i samtaleoppsettet: en dag, et klokkeslett, og eleven tida er satt
+ * av til.
+ *
+ * Tidene lagres som egne rader og ikke regnes ut av skjemaet hver gang. Uten
+ * dem ville en tid læreren har flyttet for hånd — en samtale klokka 15.15
+ * midt i halvtimene — blitt overskrevet neste gang lengden ble endret, og det
+ * er nettopp de tidene som er avtalt med noen.
+ */
+export interface MeetingSlot {
+  id: string;
+  /** Ukedag: 1 = mandag … 5 = fredag. Arbeidsuka, som i skolens timeplan. */
+  day: number;
+  /** Klokkeslettet samtalen starter, «08:30». */
+  start: string;
+  /** Lengden i minutter. Ligger på tida, så én samtale kan settes lengre. */
+  minutes: number;
+  /** Eleven tida er satt av til, eller `null` for en ledig tid. */
+  student_id: string | null;
+  /** Merknad læreren skriver selv: «pause», «møte med helsesykepleier». */
+  note: string;
+}
+
+/**
+ * Et samtaleoppsett for en klasse: standardskjemaet tidene lages fra, og
+ * tidene selv.
+ *
+ * Oppsettet hører til klassen og ikke til klasserommet — en samtale har ingen
+ * pult og intet sete, og tidene flytter ingen elever i klassekartet.
+ */
+export interface MeetingPlan {
+  id: string;
+  class_id: string;
+  name: string;
+  kind: MeetingKind;
+  /** Standardlengden nye tider får, i minutter. */
+  minutes: number;
+  /** Luft mellom to samtaler, i minutter. Tid til å skrive ned og hente neste. */
+  gap: number;
+  /** Skjemaet tidene lages fra: fra og til, hver dag. */
+  day_start: string;
+  day_end: string;
+  /** Ukedagene det settes opp tider på — 1 = mandag … 5 = fredag. */
+  days: number[];
+  /** Mandagen i uka, «2026-09-14». Tom streng betyr uke uten dato. */
+  week_start: string;
+  slots: MeetingSlot[];
+  created_at: string;
+}

@@ -45,6 +45,7 @@ src/
     layout.tsx                  App-skall: AppDataProvider + Sidebar
     page.tsx                    Sender videre til første klasse
     klasser/[classId]/page.tsx  Verktøylinje + klasserommet (tynn side)
+    klasser/[classId]/samtaler/ Elev- og utviklingssamtaler i en arbeidsuke
     personvern/page.tsx         Personvernsiden læreren kan vise fram
   components/
     Sidebar.tsx                 Klasser, elever, tidligere kart, par-oversikt
@@ -52,6 +53,7 @@ src/
     ClassroomCanvas.tsx         Klasserommet: pulter, draging, seter
     ClassroomView.tsx           Klassekartet i fullskjerm, til projektoren
     StudentGroups.tsx           Grupper til prosjektarbeid
+    MeetingPlanner.tsx          Samtaleuka: skjema, tider og hvem som får dem
     StudentManager.tsx          Legg til/rediger elever (kompakt, for menyen)
     PairHeatmap.tsx             Varmekart over hvem som har sittet sammen
     ContactTeachers.tsx         Kontaktlærerne, og elevene hver av dem har
@@ -62,6 +64,7 @@ src/
     classroom.ts                Pult-geometri, merking av flere pulter, låser
     seating.ts                  Fordelingsalgoritmen (simulert herding) + regler,
                                 og gruppestørrelsene grupperingen bruker
+    meetings.ts                 Samtaletider: klokkeslett, uka, fordelingen
     api.ts                      Datalaget: klasser, elever, kart, par
     local-db.ts                 Lagring i nettleseren (IndexedDB) + sikkerhetskopi
     backup-file.ts              Får sikkerhetskopien ned på maskinen
@@ -244,6 +247,51 @@ som ikke skal sitte sammen gjelder også her.
   klikket. Slippes navnet utenfor knappen det ble tatt fra, kommer det aldri
   noe klikk — og det neste ekte klikket ville blitt spist.
 
+### Samtaler
+
+`meetings` er samtaleoppsett: én runde med elevsamtaler eller utviklingssamtaler,
+med skjemaet tidene lages av og tidene selv. Oppsettet hører til klassen og ikke
+til klasserommet — en samtale har ingen pult og intet sete.
+
+Læreren setter et skjema (fra 08.30 til 17.00, mandag til fredag, tjue eller
+tretti minutter om gangen), lager tidene av det, og fordeler elevene på dem.
+Etterpå justeres enkelttider for hånd, for det er slik en samtaleuke blir: de
+fleste tar tida de får, og et par familier kan bare tirsdag klokka halv fem.
+
+- **Tidene lagres som egne rader**, ikke regnes ut av skjemaet hver gang. En tid
+  læreren har flyttet for hånd er avtalt med noen, og ville ellers blitt
+  overskrevet neste gang lengden ble endret.
+- **Fordelingen går på rundgang mellom dagene** (`fillSlots`). Et skjema fra
+  08.30 til 17.00 har plass til sytten samtaler på én dag; fylte vi dagen før vi
+  gikk videre, fikk læreren sytten samtaler på rad på mandag og tre på tirsdag.
+  Ingen holder ut en slik dag.
+- **`refill` lar hver elev beholde dagen sin** når tidene lages på nytt. Dagen er
+  det første de foresatte skriver ned, og en endring fra 20 til 30 minutter skal
+  flytte klokkeslettene, ikke halve klassen til en annen ukedag.
+- **En merknad på en tid setter den av**: fordelingen hopper over tider med
+  merknad, og det er slik en pause eller et annet møte blokkeres i skjemaet.
+- **Eleven velges i en nedtrekksliste, ikke ved å dras.** Samme avveining som i
+  gruppene, men den faller motsatt vei her: en tid er en rad i et skjema, ikke et
+  sete i et rom. Lista virker likt med mus, fingre og tastatur, og trenger ingen
+  egen tastaturvei ved siden av.
+- **Oppsettet lagres av seg selv**, med 400 ms forsinkelse, som pultene. En
+  samtaleuke settes opp over flere økter, og en «Lagre»-knapp læreren rekker å gå
+  fra ville kostet hele uka.
+- **Oppsettet som vises er utledet**, ikke satt i en effekt: det læreren har
+  åpnet, ellers det nyeste. Hører utkastet til en annen klasse, er vi kommet hit
+  fra menya, og klassens egne oppsett gjelder.
+- **Arket er en egen blokk**, ikke redigeringen med feltene skrudd av. På papiret
+  er det tida og navnet som er hele poenget, og en side full av nedtrekkslister
+  og «fjern»-kryss er ikke til å lese. Dagene ligger side om side, og A4 liggende
+  fra utskriftsreglene passer fem spalter.
+- **Egen side og ikke et vindu.** Skjemaet er en uke bredt, og læreren blir
+  sittende i det en stund av gangen.
+
+Tider som ligger oppå hverandre (`clashingSlots`) får rød ramme og et varsel.
+Skjemaet lager dem aldri selv, men en tid som er flyttet for hånd kan havne midt
+i den neste — og to samtaler klokka 15.00 må læreren få vite om før arket henges
+opp.
+
 ### Fullskjermvisningen
 
 «Vis klassekart» legger kartet over hele skjermen til projektoren, og er en
@@ -294,9 +342,14 @@ regler».
 Versjon 5 la til `groups` — lagrede gruppeinndelinger. Eldre kopier mangler
 lista, og leses som «ingen grupper».
 
-`replaceAll()` må skrive **alle** listene. Reglene og gruppene hører til de
-samme klassene som resten; ble de ikke erstattet, ble de liggende igjen fra
-datasettet kopien nettopp tok over for, og pekte på elever som ikke finnes.
+Versjon 6 la til `meetings` — samtaleoppsett. Eldre kopier mangler lista, og
+leses som «ingen samtaler». `normalizePlan()` fyller inn felter som mangler i et
+enkelt oppsett, og kaster oppsett som ikke er til å lese — et skjema uten dager
+eller med lengde 0 ville ellers veltet samtalesida.
+
+`replaceAll()` må skrive **alle** listene. Reglene, gruppene og samtalene hører
+til de samme klassene som resten; ble de ikke erstattet, ble de liggende igjen
+fra datasettet kopien nettopp tok over for, og pekte på elever som ikke finnes.
 
 **Sikkerhetskopien er hele datasettet, ikke én klasse.** Derfor står det ikke
 noe klassenavn i filnavnet, og derfor erstatter `replaceAll()` alt ved import.

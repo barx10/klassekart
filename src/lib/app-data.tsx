@@ -27,6 +27,10 @@ import {
   fetchAllStudents,
   fetchChartHistory,
   fetchGroupSets,
+  fetchMeetingPlans,
+  createMeetingPlan as apiCreateMeetingPlan,
+  saveMeetingPlan as apiSaveMeetingPlan,
+  deleteMeetingPlan as apiDeleteMeetingPlan,
   suggestGroups as apiSuggestGroups,
   saveGroupSet as apiSaveGroupSet,
   deleteGroupSet as apiDeleteGroupSet,
@@ -48,6 +52,8 @@ import type {
   DeskAssignments,
   Gender,
   GroupSet,
+  MeetingKind,
+  MeetingPlan,
   PairHistoryRow,
   SchoolClass,
   SeatingChart,
@@ -104,6 +110,14 @@ interface AppDataValue {
   /** Lagrer en inndeling. Med `id` skrives den lagrede over i stedet. */
   saveGroupSet: (name: string, groups: string[][], id?: string) => Promise<GroupSet>;
   deleteGroupSet: (id: string) => Promise<void>;
+
+  /** Samtaleoppsettene for klassen — elevsamtaler og utviklingssamtaler. */
+  meetingPlans: MeetingPlan[];
+  /** Lager et nytt oppsett med standardskjemaet, og lagrer det med én gang. */
+  createMeetingPlan: (kind: MeetingKind) => Promise<MeetingPlan>;
+  /** Lagrer et helt oppsett — skjemaet og tidene i samme skriv. */
+  saveMeetingPlan: (plan: MeetingPlan) => Promise<void>;
+  deleteMeetingPlan: (id: string) => Promise<void>;
   moveStudent: (
     from: { deskId: string; index: number },
     to: { deskId: string; index: number }
@@ -138,6 +152,7 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
   const [pairHistory, setPairHistory] = useState<PairHistoryRow[]>([]);
   const [apartPairs, setApartPairs] = useState<ApartPair[]>([]);
   const [groupSets, setGroupSets] = useState<GroupSet[]>([]);
+  const [meetingPlans, setMeetingPlans] = useState<MeetingPlan[]>([]);
   const [loadedClassId, setLoadedClassId] = useState<string | null>(null);
   const [generating, setGenerating] = useState(false);
   // Teller opp når lagringen er byttet ut under føttene på oss (import), slik
@@ -179,6 +194,7 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
     setPairHistory([]);
     setApartPairs([]);
     setGroupSets([]);
+    setMeetingPlans([]);
     setLoadedClassId(null);
     setGenerateResult(null);
     await loadAll();
@@ -195,14 +211,16 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
       fetchPairHistory(activeClassId),
       fetchApartPairs(activeClassId),
       fetchGroupSets(activeClassId),
+      fetchMeetingPlans(activeClassId),
     ])
-      .then(([chartRows, history, apart, groups]) => {
+      .then(([chartRows, history, apart, groups, meetings]) => {
         if (cancelled) return;
         setCharts(chartRows);
         setActiveChartId(chartRows[0]?.id ?? null);
         setPairHistory(history);
         setApartPairs(apart);
         setGroupSets(groups);
+        setMeetingPlans(meetings);
         setLoadedClassId(activeClassId);
       })
       .catch((e) => {
@@ -456,6 +474,31 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
     [activeClassId]
   );
 
+  // --- Samtaler ------------------------------------------------------------
+  // Oppsettet lagres i sin helhet hver gang. Et samtaleskjema er noen
+  // kilobyte, og alternativet — å skrive én tid om gangen — ville gjort en
+  // endring av lengden til tjue småskriv som kunne rekke å gå fra hverandre.
+
+  const createMeetingPlan = useCallback(
+    async (kind: MeetingKind) => {
+      if (!activeClassId) throw new Error("Ingen klasse er valgt.");
+      const created = await apiCreateMeetingPlan(activeClassId, kind);
+      setMeetingPlans((prev) => [created, ...prev]);
+      return created;
+    },
+    [activeClassId]
+  );
+
+  const saveMeetingPlan = useCallback(async (plan: MeetingPlan) => {
+    await apiSaveMeetingPlan(plan);
+    setMeetingPlans((prev) => prev.map((m) => (m.id === plan.id ? plan : m)));
+  }, []);
+
+  const deleteMeetingPlan = useCallback(async (id: string) => {
+    await apiDeleteMeetingPlan(id);
+    setMeetingPlans((prev) => prev.filter((m) => m.id !== id));
+  }, []);
+
   const showChart = useCallback((chartId: string) => setActiveChartId(chartId), []);
 
   const resetPairHistory = useCallback(async () => {
@@ -609,6 +652,10 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
       suggestGroups,
       saveGroupSet,
       deleteGroupSet,
+      meetingPlans,
+      createMeetingPlan,
+      saveMeetingPlan,
+      deleteMeetingPlan,
       moveStudent,
       generate,
       generating,
@@ -651,6 +698,10 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
       suggestGroups,
       saveGroupSet,
       deleteGroupSet,
+      meetingPlans,
+      createMeetingPlan,
+      saveMeetingPlan,
+      deleteMeetingPlan,
       moveStudent,
       generate,
       generating,
