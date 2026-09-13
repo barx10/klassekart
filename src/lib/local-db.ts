@@ -4,11 +4,13 @@ import type {
   ApartPair,
   ContactTeacher,
   GroupSet,
+  MeetingPlan,
   PairHistoryRow,
   SchoolClass,
   SeatingChart,
   Student,
 } from "./types";
+import { normalizePlan } from "./meetings";
 
 /**
  * All lagring skjer i nettleseren, i IndexedDB. Ingenting sendes til en
@@ -38,8 +40,10 @@ const KEY = "state";
  *    kopier mangler lista, og leses som «ingen regler».
  * 5: `groups` kom til — lagrede gruppeinndelinger til prosjektarbeid. Eldre
  *    kopier mangler lista, og leses som «ingen grupper».
+ * 6: `meetings` kom til — oppsett for elev- og utviklingssamtaler. Eldre
+ *    kopier mangler lista, og leses som «ingen samtaler».
  */
-export const BACKUP_VERSION = 5;
+export const BACKUP_VERSION = 6;
 
 export interface LocalData {
   version: number;
@@ -50,6 +54,7 @@ export interface LocalData {
   contact_teachers: ContactTeacher[];
   apart_pairs: ApartPair[];
   groups: GroupSet[];
+  meetings: MeetingPlan[];
 }
 
 export function emptyData(): LocalData {
@@ -62,6 +67,7 @@ export function emptyData(): LocalData {
     contact_teachers: [],
     apart_pairs: [],
     groups: [],
+    meetings: [],
   };
 }
 
@@ -133,6 +139,12 @@ function normalize(value: unknown): LocalData {
       : contactTeachersFromNames(classes, students),
     apart_pairs: Array.isArray(raw.apart_pairs) ? raw.apart_pairs : [],
     groups: Array.isArray(raw.groups) ? raw.groups : [],
+    // Et samtaleoppsett har både et skjema og en liste med tider, og begge
+    // deler kan mangle i en eldre fil. `normalizePlan` fyller inn resten, og
+    // kaster oppsett som ikke er til å lese.
+    meetings: Array.isArray(raw.meetings)
+      ? raw.meetings.map(normalizePlan).filter((p): p is MeetingPlan => p !== null)
+      : [],
   };
 }
 
@@ -240,10 +252,11 @@ export function replaceAll(data: LocalData): Promise<void> {
     current.charts = data.charts;
     current.pairs = data.pairs;
     current.contact_teachers = data.contact_teachers;
-    // Reglene og gruppene hører til de samme klassene som resten. Ble de ikke
+    // Reglene, gruppene og samtalene hører til de samme klassene som resten. Ble de ikke
     // erstattet her, ble de liggende igjen fra datasettet kopien nettopp tok
     // over for — pekende på elever som ikke finnes lenger.
     current.apart_pairs = data.apart_pairs;
     current.groups = data.groups;
+    current.meetings = data.meetings;
   });
 }

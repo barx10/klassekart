@@ -100,6 +100,7 @@ export default function Sidebar({ open, hidden, onClose, onHide, onAbout }: Prop
     apartPairs,
     groupSets,
     deleteGroupSet,
+    meetingPlans,
     contactTeachers,
     removeContactTeacher,
     setError,
@@ -220,7 +221,9 @@ export default function Sidebar({ open, hidden, onClose, onHide, onAbout }: Prop
     setPendingDelete(null);
     try {
       await deleteClass(id);
-      if (pathname === `/klasser/${id}`) router.push("/");
+      // Også fra en underside av klassen, som samtalene — ellers blir læreren
+      // stående på en side for en klasse som ikke finnes lenger.
+      if (pathname.startsWith(`/klasser/${id}`)) router.push("/");
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     }
@@ -300,7 +303,10 @@ export default function Sidebar({ open, hidden, onClose, onHide, onAbout }: Prop
           ) : (
             <ul className="flex flex-col gap-0.5">
               {classes.map((c) => {
-                const isActive = pathname === `/klasser/${c.id}`;
+                // Også når du står på en underside av klassen, som samtalene:
+                // ellers ser klassen uvalgt ut mens du jobber i den.
+                const isActive =
+                  pathname === `/klasser/${c.id}` || pathname.startsWith(`/klasser/${c.id}/`);
                 const count = (studentsByClass.get(c.id) ?? []).length;
                 return (
                   <li
@@ -443,6 +449,32 @@ export default function Sidebar({ open, hidden, onClose, onHide, onAbout }: Prop
                 )}
               </ul>
             )}
+
+            {/* Samtalene er en egen side og ikke et vindu: skjemaet er en uke
+                bredt, og læreren blir sittende i det en stund av gangen. */}
+            <Link
+              href={`/klasser/${activeClass.id}/samtaler`}
+              onClick={onClose}
+              aria-current={
+                pathname === `/klasser/${activeClass.id}/samtaler` ? "page" : undefined
+              }
+              className={`mt-1 flex w-full items-center gap-1.5 rounded-md px-2 py-2 text-left text-sm font-medium ${
+                pathname === `/klasser/${activeClass.id}/samtaler`
+                  ? "bg-accent-soft text-accent-text"
+                  : "hover:bg-background"
+              }`}
+            >
+              <svg viewBox="0 0 16 16" className="h-3.5 w-3.5 shrink-0 text-subtle" fill="none" stroke="currentColor" strokeWidth="1.5" aria-hidden>
+                <rect x="1.75" y="3" width="12.5" height="11.25" rx="1.75" />
+                <path d="M1.75 6.25h12.5M5 1.75v2.5M11 1.75v2.5M8 8.5v2l1.5 1" strokeLinecap="round" />
+              </svg>
+              <span className="flex-1">Samtaler</span>
+              {meetingPlans.length > 0 && (
+                <span className="rounded-full bg-background px-1.5 text-[11px] tabular-nums text-muted">
+                  {meetingPlans.length}
+                </span>
+              )}
+            </Link>
 
             {/* Egne knapper, ikke seksjoner: de åpner et vindu i stedet for å
                 folde ut noe her — derfor ingen chevron. */}

@@ -39,6 +39,8 @@ skole-PC-en», og det er en helt annen bakke å gå opp.
 | Kontaktlærer | Ja, om ansatt |
 | Klassekart – hvem som satt hvor, når | Ja |
 | Par-historikk | Ja – en liten sosial kartlegging av klassen over tid |
+| Gruppeinndelinger | Ja – hvem som har vært i gruppe med hvem |
+| Samtaletider | Ja – når en navngitt elev og familien møter læreren |
 
 Alt dette ligger nå i nettleseren til den som skrev det inn (IndexedDB), og
 sendes ingen steder.

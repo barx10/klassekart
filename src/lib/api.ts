@@ -2,6 +2,7 @@
 
 import { mutate, newId, read, teacherKey, type LocalData } from "./local-db";
 import { clampSeats, ensureCapacity, makeGrid, validLocks } from "./classroom";
+import { buildSlots, defaultPlan, kindLabel } from "./meetings";
 import {
   apartViolations,
   buildHistoryMap,
@@ -18,6 +19,8 @@ import type {
   GroupSet,
   DeskAssignments,
   Gender,
+  MeetingKind,
+  MeetingPlan,
   PairHistoryRow,
   SchoolClass,
   SeatingChart,
@@ -114,6 +117,7 @@ export async function deleteClass(id: string): Promise<void> {
     data.pairs = data.pairs.filter((p) => p.class_id !== id);
     data.apart_pairs = data.apart_pairs.filter((p) => p.class_id !== id);
     data.groups = data.groups.filter((g) => g.class_id !== id);
+    data.meetings = data.meetings.filter((m) => m.class_id !== id);
   });
 }
 
@@ -210,6 +214,13 @@ export async function deleteStudent(id: string): Promise<void> {
     );
     for (const found of data.classes) {
       if (found.locked_seats?.[id]) delete found.locked_seats[id];
+    }
+    // Tida eleven hadde blir stående, men ledig. Å slette hele tida ville
+    // flyttet alle de andre samtalene, og de er avtalt med noen.
+    for (const plan of data.meetings) {
+      for (const slot of plan.slots) {
+        if (slot.student_id === id) slot.student_id = null;
+      }
     }
   });
 }
@@ -587,5 +598,58 @@ export async function saveGroupSet(
 export async function deleteGroupSet(id: string): Promise<void> {
   await mutate((data) => {
     data.groups = data.groups.filter((g) => g.id !== id);
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Samtaler
+// ---------------------------------------------------------------------------
+
+export async function fetchMeetingPlans(classId: string): Promise<MeetingPlan[]> {
+  return read((data) =>
+    data.meetings
+      .filter((m) => m.class_id === classId)
+      .sort((a, b) => b.created_at.localeCompare(a.created_at))
+  );
+}
+
+/**
+ * Lager et nytt samtaleoppsett med standardskjemaet, og tidene det gir.
+ * Oppsettet lagres med én gang: læreren skal ikke risikere å miste en halv
+ * uke med tider fordi hen glemte å trykke lagre.
+ */
+export async function createMeetingPlan(
+  classId: string,
+  kind: MeetingKind
+): Promise<MeetingPlan> {
+  return mutate((data) => {
+    requireClass(data, classId);
+    const created: MeetingPlan = {
+      id: newId(),
+      class_id: classId,
+      name: kindLabel(kind) + "r",
+      ...defaultPlan(kind),
+      slots: [],
+      created_at: new Date().toISOString(),
+    };
+    created.slots = buildSlots(created);
+    data.meetings.push(created);
+    return created;
+  });
+}
+
+/** Lagrer et helt oppsett — skjemaet og tidene i samme skriv. */
+export async function saveMeetingPlan(plan: MeetingPlan): Promise<MeetingPlan> {
+  return mutate((data) => {
+    const index = data.meetings.findIndex((m) => m.id === plan.id);
+    if (index === -1) throw new Error("Fant ikke samtaleoppsettet.");
+    data.meetings[index] = plan;
+    return plan;
+  });
+}
+
+export async function deleteMeetingPlan(id: string): Promise<void> {
+  await mutate((data) => {
+    data.meetings = data.meetings.filter((m) => m.id !== id);
   });
 }
