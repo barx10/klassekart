@@ -258,6 +258,17 @@ tretti minutter om gangen), lager tidene av det, og fordeler elevene på dem.
 Etterpå justeres enkelttider for hånd, for det er slik en samtaleuke blir: de
 fleste tar tida de får, og et par familier kan bare tirsdag klokka halv fem.
 
+- **Oppsettet gjelder én kontaktlærer om gangen** (`plan.teacher`). En klasse har
+  gjerne to som tar hver sine samtaler, og da er det egne elever læreren skal
+  sette opp. Utvalget følger navnet i `contact_teacher` på eleven, sammenlignet
+  med `teacherKey()` som ellers i appen, og tom streng er «alle i klassen». Et
+  nytt oppsett arver klassens standard kontaktlærer — men bare når noen elever
+  faktisk har hen, ellers ville uka blitt tom.
+- **Nedtrekkslista tilbyr bare lærere som har elever i klassen.** Hele lista over
+  kontaktlærere i programmet ville latt læreren velge et utvalg uten elever.
+- **Et bytte av kontaktlærer sletter ingen tider.** Elever fra det forrige
+  utvalget blir stående — de kan være avtalt — men telles ikke med, og det står
+  en linje om hvorfor navn utenfor lista opptar tider.
 - **Tidene lagres som egne rader**, ikke regnes ut av skjemaet hver gang. En tid
   læreren har flyttet for hånd er avtalt med noen, og ville ellers blitt
   overskrevet neste gang lengden ble endret.
@@ -286,6 +297,9 @@ fleste tar tida de får, og et par familier kan bare tirsdag klokka halv fem.
   fra utskriftsreglene passer fem spalter.
 - **Egen side og ikke et vindu.** Skjemaet er en uke bredt, og læreren blir
   sittende i det en stund av gangen.
+- **Feltene med hjelpetekst peker på feltet med `htmlFor`.** En `<label>` som
+  omslutter både spørsmålstegnet og feltet gir navnet sitt til knappen, som
+  kommer først, og feltet blir stående uten navn for skjermlesere.
 
 Tider som ligger oppå hverandre (`clashingSlots`) får rød ramme og et varsel.
 Skjemaet lager dem aldri selv, men en tid som er flyttet for hånd kan havne midt
