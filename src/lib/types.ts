@@ -134,18 +134,24 @@ export interface ContactTeacher {
 export type MeetingKind = "elevsamtale" | "utviklingssamtale";
 
 /**
- * Én tid i samtaleoppsettet: en dag, et klokkeslett, og eleven tida er satt
+ * Én tid i samtaleoppsettet: en dato, et klokkeslett, og eleven tida er satt
  * av til.
  *
  * Tidene lagres som egne rader og ikke regnes ut av skjemaet hver gang. Uten
  * dem ville en tid læreren har flyttet for hånd — en samtale klokka 15.15
  * midt i halvtimene — blitt overskrevet neste gang lengden ble endret, og det
  * er nettopp de tidene som er avtalt med noen.
+ *
+ * **Datoen er hele datoen, ikke et ukedagsnummer.** Tidene lå først som
+ * «dag 3» regnet fra mandagen i oppsettet. Da flyttet en endring av uka alle
+ * samtalene som var avtalt: eleven som skulle onsdag 16. september havnet
+ * plutselig onsdagen etter. En dato står i ro, og gjør at et oppsett kan
+ * strekke seg over flere uker.
  */
 export interface MeetingSlot {
   id: string;
-  /** Ukedag: 1 = mandag … 5 = fredag. Arbeidsuka, som i skolens timeplan. */
-  day: number;
+  /** Datoen samtalen er på, «2026-09-16». */
+  date: string;
   /** Klokkeslettet samtalen starter, «08:30». */
   start: string;
   /** Lengden i minutter. Ligger på tida, så én samtale kan settes lengre. */
@@ -178,6 +184,13 @@ export interface MeetingPlan {
   /** Ukedagene det settes opp tider på — 1 = mandag … 5 = fredag. */
   days: number[];
   /**
+   * Hvor mange uker skjemaet lager tider i, fra og med `week_start`. En klasse
+   * får sjelden plass i én uke: noen familier kan ikke den uka i det hele tatt,
+   * og da settes uka etter opp med en gang i stedet for å lages som et eget
+   * oppsett ingen ser i sammenheng med det første.
+   */
+  weeks: number;
+  /**
    * Kontaktlæreren oppsettet gjelder for, som **navn** — samme peker som
    * elevens `contact_teacher`. Tom streng er «alle i klassen».
    *
@@ -187,7 +200,7 @@ export interface MeetingPlan {
    * skal stå der neste gang oppsettet åpnes.
    */
   teacher: string;
-  /** Mandagen i uka, «2026-09-14». Tom streng betyr uke uten dato. */
+  /** Mandagen skjemaet starter i, «2026-09-14». */
   week_start: string;
   slots: MeetingSlot[];
   created_at: string;

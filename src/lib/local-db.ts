@@ -42,8 +42,11 @@ const KEY = "state";
  *    kopier mangler lista, og leses som «ingen grupper».
  * 6: `meetings` kom til — oppsett for elev- og utviklingssamtaler. Eldre
  *    kopier mangler lista, og leses som «ingen samtaler».
+ * 7: samtaletidene fikk dato i stedet for ukedagsnummer, og oppsettet fikk
+ *    `weeks`. `normalizePlan()` regner om «dag 3» til datoen den dagen hadde i
+ *    uka oppsettet gjaldt, så en kopi fra versjon 6 leses uten tap.
  */
-export const BACKUP_VERSION = 6;
+export const BACKUP_VERSION = 7;
 
 export interface LocalData {
   version: number;
