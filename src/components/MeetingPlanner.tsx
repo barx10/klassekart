@@ -1,7 +1,8 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useId, useMemo, useState } from "react";
 import { useAppData } from "@/lib/app-data";
+import { teacherKey } from "@/lib/local-db";
 import ConfirmDialog from "./ConfirmDialog";
 import HelpTip from "./HelpTip";
 import {
@@ -43,6 +44,11 @@ import type { MeetingKind, MeetingPlan, MeetingSlot } from "@/lib/types";
  * lager tidene av det, og fordeler elevene på dem. Etterpå justeres enkelttider
  * for hånd, for det er slik en samtaleuke faktisk blir: de fleste tar tida de
  * får, og et par familier kan bare tirsdag klokka halv fem.
+ *
+ * **Oppsettet gjelder én kontaktlærer om gangen.** En klasse har gjerne to som
+ * tar hver sine samtaler, og det er egne elever læreren skal sette opp. Utvalget
+ * følger `contact_teacher` på eleven, altså det som står i elevlista — settes det
+ * ikke, gjelder oppsettet alle i klassen.
  *
  * **Eleven velges i en nedtrekksliste, ikke ved å dras.** Det er den samme
  * avveiningen som ellers i appen, men den faller motsatt vei her: en tid er en
@@ -86,6 +92,11 @@ export default function MeetingPlanner() {
   const [showNotes, setShowNotes] = useState(false);
   const [pendingDelete, setPendingDelete] = useState<MeetingPlan | null>(null);
   const [confirmRebuild, setConfirmRebuild] = useState(false);
+  // Feltene som har en hjelpetekst ved siden av seg må peke på feltet med
+  // `htmlFor`. En <label> som omslutter både spørsmålstegnet og feltet gir
+  // navnet sitt til knappen — den kommer først — og feltet blir stående uten.
+  const teacherId = useId();
+  const weekId = useId();
 
   /**
    * Oppsettet som vises: det læreren har åpnet, ellers det nyeste. Utledet og
@@ -99,6 +110,28 @@ export default function MeetingPlanner() {
 
   const byId = useMemo(() => new Map(activeStudents.map((s) => [s.id, s])), [activeStudents]);
 
+  /**
+   * Kontaktlærerne som faktisk har elever i klassen. Lista over alle lærerne i
+   * programmet ville tilbudt et utvalg som ga en tom uke.
+   */
+  const teachers = useMemo(() => {
+    const funnet = new Map<string, string>();
+    for (const student of activeStudents) {
+      const navn = student.contact_teacher?.trim();
+      if (navn) funnet.set(teacherKey(navn), navn);
+    }
+    return [...funnet.values()].sort((a, b) => a.localeCompare(b, "no"));
+  }, [activeStudents]);
+
+  /** Elevene oppsettet gjelder: kontaktlærerens egne, ellers hele klassen. */
+  const students = useMemo(() => {
+    const valgt = plan?.teacher.trim();
+    if (!valgt) return activeStudents;
+    return activeStudents.filter(
+      (s) => s.contact_teacher && teacherKey(s.contact_teacher) === teacherKey(valgt)
+    );
+  }, [activeStudents, plan]);
+
   /** Hvor hver elev står oppført. Brukes til å vise tida i nedtrekkslista. */
   const placedIn = useMemo(() => {
     const map = new Map<string, MeetingSlot>();
@@ -110,9 +143,21 @@ export default function MeetingPlanner() {
 
   const clashes = useMemo(() => clashingSlots(plan?.slots ?? []), [plan]);
   const unplaced = useMemo(
-    () => unplacedStudents(plan?.slots ?? [], activeStudents),
-    [plan, activeStudents]
+    () => unplacedStudents(plan?.slots ?? [], students),
+    [plan, students]
   );
+
+  /**
+   * Tider som er satt av til elever utenfor utvalget. Skifter læreren
+   * kontaktlærer på et oppsett som alt er fordelt, blir de stående — de kan
+   * være avtalt med noen — men da skal det stå tydelig hvorfor tider er
+   * opptatt av navn som ikke er i lista under.
+   */
+  const foreign = useMemo(() => {
+    if (!plan?.teacher.trim()) return 0;
+    const mine = new Set(students.map((s) => s.id));
+    return plan.slots.filter((s) => s.student_id && !mine.has(s.student_id)).length;
+  }, [plan, students]);
 
   // Lagrer av seg selv når det har vært stille en liten stund. Timeren
   // nullstilles for hvert tastetrykk, så et navn som skrives inn blir ett
@@ -168,7 +213,7 @@ export default function MeetingPlanner() {
 
   function distribute() {
     if (!plan) return;
-    update({ ...plan, slots: fillSlots(plan.slots, activeStudents.map((s) => s.id)) });
+    update({ ...plan, slots: fillSlots(plan.slots, students.map((s) => s.id)) });
   }
 
   function clearStudents() {
@@ -351,6 +396,40 @@ export default function MeetingPlanner() {
                 </select>
               </label>
 
+              {/* Kontaktlæreren står ved siden av typen: begge svarer på hva
+                  slags runde dette er, før skjemaet sier når den går. */}
+              <div>
+                <span className="mb-1 flex items-center gap-1 text-xs text-muted">
+                  <label htmlFor={teacherId}>Kontaktlærer</label>
+                  <HelpTip label="Hva gjør valget av kontaktlærer?">
+                    Velger du en kontaktlærer, er det bare elevene som har hen som kontaktlærer som
+                    settes opp og fordeles. Det bestemmes av feltet «Kontaktlærer» på eleven, under
+                    <strong className="text-foreground"> Elever</strong> i menyen. Har ingen elever
+                    fått en kontaktlærer ennå, er «Alle i klassen» det eneste valget.
+                  </HelpTip>
+                </span>
+                <select
+                  id={teacherId}
+                  value={plan.teacher}
+                  onChange={(e) => change({ teacher: e.target.value })}
+                  className={inputClass}
+                >
+                  <option value="">Alle i klassen</option>
+                  {teachers.map((navn) => (
+                    <option key={navn} value={navn}>
+                      {navn}
+                    </option>
+                  ))}
+                  {/* Læreren kan ha mistet elevene sine siden oppsettet ble
+                      laget. Valget må likevel stå, ellers ville lista hoppet
+                      tilbake til «alle i klassen» uten at noen ba om det. */}
+                  {plan.teacher.trim() &&
+                    !teachers.some((n) => teacherKey(n) === teacherKey(plan.teacher)) && (
+                      <option value={plan.teacher}>{plan.teacher} (ingen elever)</option>
+                    )}
+                </select>
+              </div>
+
               <label>
                 <span className="mb-1 block text-xs text-muted">Lengde</span>
                 <span className="flex items-center gap-1.5">
@@ -416,9 +495,9 @@ export default function MeetingPlanner() {
                 />
               </label>
 
-              <label>
+              <div>
                 <span className="mb-1 flex items-center gap-1 text-xs text-muted">
-                  Uke
+                  <label htmlFor={weekId}>Uke</label>
                   <HelpTip label="Hva gjør datoen?">
                     Velger du en dato, får dagene datoer på seg — «Mandag 14. sep.» — slik de skal
                     stå på arket foresatte får. Treffer du en annen ukedag, flyttes oppsettet til
@@ -426,12 +505,13 @@ export default function MeetingPlanner() {
                   </HelpTip>
                 </span>
                 <input
+                  id={weekId}
                   type="date"
                   value={plan.week_start}
                   onChange={(e) => change({ week_start: mondayOf(e.target.value) })}
                   className={`${inputClass} w-40`}
                 />
-              </label>
+              </div>
             </div>
 
             <fieldset className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
@@ -511,14 +591,26 @@ export default function MeetingPlanner() {
           {/* --- Status --- */}
           <div data-print-hide className="flex flex-wrap items-center gap-3 text-xs">
             <span className="text-subtle" role="status">
-              {plural(usedSlots, "elev", "elever")} satt opp av{" "}
-              {plural(activeStudents.length, "elev", "elever")} · {plural(totalSlots, "tid", "tider")}{" "}
-              i uka
+              {students.length - unplaced.length} av {plural(students.length, "elev", "elever")} satt
+              opp
+              {plan.teacher.trim() ? ` hos ${plan.teacher}` : " i klassen"} ·{" "}
+              {plural(totalSlots, "tid", "tider")} i uka
             </span>
             <span className={saved ? "text-subtle" : "text-accent-text"}>
               {saved ? "Lagret" : "Lagrer …"}
             </span>
           </div>
+
+          {foreign > 0 && (
+            <p
+              role="status"
+              data-print-hide
+              className="rounded-lg border border-border bg-surface px-3 py-1.5 text-xs text-muted"
+            >
+              {plural(foreign, "tid er", "tider er")} satt av til elever som har en annen
+              kontaktlærer. De blir stående — de kan være avtalt — men telles ikke med over.
+            </p>
+          )}
 
           {clashes.size > 0 && (
             <p
@@ -623,7 +715,13 @@ export default function MeetingPlanner() {
                                 // samtidig som tida var opptatt.
                                 <option value={slot.student_id ?? ""}>{UNKNOWN}</option>
                               )}
-                              {activeStudents.map((s) => {
+              {/* Eleven som står i tida er alltid med, også når hen hører til
+                  en annen kontaktlærer enn den oppsettet gjelder — ellers ville
+                  feltet stått tomt for en tid som er opptatt. */}
+                              {(student && !students.includes(student)
+                                ? [student, ...students]
+                                : students
+                              ).map((s) => {
                                 const at = placedIn.get(s.id);
                                 const elsewhere = at && at.id !== slot.id;
                                 return (
@@ -700,6 +798,7 @@ export default function MeetingPlanner() {
                 {plan.name || kindLabel(plan.kind)} – {activeClass?.name}
               </p>
               <p className="mt-0.5 text-sm text-muted">
+                {plan.teacher.trim() ? `${plan.teacher} · ` : ""}
                 {plural(plan.minutes, "minutt", "minutter")} per samtale
               </p>
             </div>

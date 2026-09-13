@@ -177,6 +177,16 @@ export interface MeetingPlan {
   day_end: string;
   /** Ukedagene det settes opp tider på — 1 = mandag … 5 = fredag. */
   days: number[];
+  /**
+   * Kontaktlæreren oppsettet gjelder for, som **navn** — samme peker som
+   * elevens `contact_teacher`. Tom streng er «alle i klassen».
+   *
+   * En klasse har gjerne to kontaktlærere som tar hver sine samtaler, og da er
+   * det bare egne elever som skal stå i uka. Lagres på oppsettet og ikke bare
+   * som et filter i grensesnittet: utvalget hører til denne samtalerunden, og
+   * skal stå der neste gang oppsettet åpnes.
+   */
+  teacher: string;
   /** Mandagen i uka, «2026-09-14». Tom streng betyr uke uten dato. */
   week_start: string;
   slots: MeetingSlot[];

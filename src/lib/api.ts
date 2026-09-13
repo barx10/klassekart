@@ -623,12 +623,27 @@ export async function createMeetingPlan(
   kind: MeetingKind
 ): Promise<MeetingPlan> {
   return mutate((data) => {
-    requireClass(data, classId);
+    const found = requireClass(data, classId);
+
+    // Har klassen en standard kontaktlærer, og har noen elever den læreren, er
+    // det de elevene oppsettet gjelder. Uten treff blant elevene ville et slikt
+    // utvalg gitt en tom uke, og da er «alle i klassen» det riktige svaret.
+    const standard = found.default_contact_teacher?.trim() ?? "";
+    const brukes =
+      standard !== "" &&
+      data.students.some(
+        (s) =>
+          s.class_id === classId &&
+          s.contact_teacher &&
+          teacherKey(s.contact_teacher) === teacherKey(standard)
+      );
+
     const created: MeetingPlan = {
       id: newId(),
       class_id: classId,
       name: kindLabel(kind) + "r",
       ...defaultPlan(kind),
+      teacher: brukes ? standard : "",
       slots: [],
       created_at: new Date().toISOString(),
     };

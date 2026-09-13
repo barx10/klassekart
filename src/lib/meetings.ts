@@ -340,7 +340,7 @@ export function dayLabel(weekStart: string, day: number): string {
 /** Et tomt oppsett med standardskjemaet, klart til å lage tider av. */
 export function defaultPlan(kind: MeetingKind): Pick<
   MeetingPlan,
-  "kind" | "minutes" | "gap" | "day_start" | "day_end" | "days" | "week_start"
+  "kind" | "minutes" | "gap" | "day_start" | "day_end" | "days" | "week_start" | "teacher"
 > {
   return {
     kind,
@@ -350,6 +350,7 @@ export function defaultPlan(kind: MeetingKind): Pick<
     day_end: DEFAULT_DAY_END,
     days: [1, 2, 3, 4, 5],
     week_start: "",
+    teacher: "",
   };
 }
 
@@ -383,6 +384,7 @@ export function normalizePlan(raw: unknown): MeetingPlan | null {
     day_end: typeof value.day_end === "string" ? value.day_end : DEFAULT_DAY_END,
     days,
     week_start: typeof value.week_start === "string" ? value.week_start : "",
+    teacher: typeof value.teacher === "string" ? value.teacher : "",
     slots: Array.isArray(value.slots)
       ? value.slots
           .filter((s): s is Record<string, unknown> => typeof s === "object" && s !== null)
