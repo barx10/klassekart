@@ -6,6 +6,7 @@ import {
   MAX_SEATS,
   MIN_SEATS,
   SEAT_GAP,
+  TOOLBAR_ROOM,
   alignDesks,
   canDistribute,
   canvasSize,
@@ -616,6 +617,13 @@ export default function ClassroomCanvas({
           "--print-zoom": String(printScale),
           "--room-w": `${width}px`,
           "--room-h": `${height}px`,
+          // Plassen verktøylinja for en valgt pult trenger under nederste rad.
+          // Den finnes ikke på papiret, og `printZoom` regner den heller ikke
+          // med — så lot vi den ligge i boksens høyde, kom den på arket som
+          // tom plass kartet ikke fikk bruke, og et høyt klasserom skjøv seg
+          // selv over på en blank side to. Utskriften trekker den fra med
+          // `--print-trim`; på skjermen skal den være der.
+          "--toolbar-h": `${TOOLBAR_ROOM}px`,
         } as React.CSSProperties
       }
       className="rounded-2xl border border-border bg-background p-4 sm:p-6"
@@ -786,7 +794,7 @@ export default function ClassroomCanvas({
             className="relative mx-auto"
             style={{
               width: "calc(var(--room-w) * var(--zoom))",
-              height: "calc(var(--room-h) * var(--zoom))",
+              height: "calc((var(--room-h) - var(--print-trim, 0px)) * var(--zoom))",
             }}
           >
             <div

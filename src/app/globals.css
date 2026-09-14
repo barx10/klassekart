@@ -213,9 +213,37 @@ body {
     display: block !important;
   }
 
+  /* Egen marg på innholdet, i tillegg til `@page`-margen under.
+     `@page { margin }` er ikke til å stole på: velger læreren «Marger: ingen»
+     i utskriftsdialogen, blir den overstyrt — og da sto klassenavnet en
+     tidels millimeter fra arkkanten og ble kuttet av skriveren. Med margen
+     også her overlever utskriften uansett hva som er valgt i dialogen, og de
+     to legger seg sammen til en vanlig marg når dialogen står som normalt. */
   main {
     overflow: visible !important;
-    padding: 0 !important;
+    padding: 8mm !important;
+  }
+
+  /* De to sidene som faktisk skrives ut — klasserommet og samtalearket — får
+     hele arkhøyden å fordele, så innholdet under kan sentreres og samtalearket
+     kan be om resten. `box-sizing` er `border-box` overalt i prosjektet, så
+     margen over er inkludert i de 100 vh-ene. Personvernsida er vanlig tekst
+     som skal flyte over så mange sider den trenger, og holdes utenfor. */
+  main:has([data-room]),
+  main:has([data-print-sheet]) {
+    display: flex;
+    min-height: 100vh;
+    flex-direction: column;
+  }
+
+  /* Bunnteksten hører ikke hjemme på et ark læreren henger opp, og streken
+     over den havnet midt på siden så snart innholdet var kortere enn arket:
+     et klasserom er bredere enn det er dypt, så et kart som fyller bredden
+     lar en tredel av høyden stå igjen. På personvernsida, som er vanlig tekst,
+     blir den stående. */
+  body:has([data-room]) footer,
+  body:has([data-print-sheet]) footer {
+    display: none !important;
   }
 
   /* Utskriften bruker sin egen skalering, regnet ut fra arket i stedet for fra
@@ -223,6 +251,11 @@ body {
      ikke som en ferdig utregnet bredde nettopp for å kunne byttes her. */
   [data-room] {
     --zoom: var(--print-zoom) !important;
+    /* Trekk bort plassen verktøylinja for en valgt pult har under nederste
+       rad. Den er tom på papiret, `printZoom` regner den ikke med, og lot vi
+       den bli med i boksens høyde skjøv et høyt klasserom seg selv over på en
+       blank side to. */
+    --print-trim: var(--toolbar-h, 0px);
   }
 
   /* Et klassekart hører hjemme på ett ark. */
@@ -234,8 +267,27 @@ body {
   [data-print-area] {
     border: 0 !important;
     box-shadow: none !important;
-    overflow: visible !important;
     padding: 0 !important;
+    /* `clip`, ikke `visible`. Lerretet er en boks på rommets fulle bredde
+       (1294 px for et vanlig klasserom) som krympes med `transform: scale()`,
+       og en transform endrer ikke layoutbredden. Slapp vi den fri, stakk de
+       uskalerte pikslene ut av sida, dokumentet ble bredere enn arket, og
+       Chrome krympet *hele* utskriften med 0,82 for å få den inn — derfor lå
+       kartet lite midt på arket uansett hva `printZoom` regnet ut. Den
+       skalerte ytre boksen har nøyaktig kartets størrelse, så `clip` tar
+       ingenting med seg. */
+    overflow: clip !important;
+  }
+
+  /* Klassekartet står midt på arket. Kartet er bredde-begrenset — rommet er
+     bredere enn arket er høyt — så det blir alltid høyde til overs, og klemt
+     mot toppen så siden halvferdig ut. `margin-block: auto` sentrerer uten å
+     kutte noe: blir innholdet høyere enn arket, faller margene bort i stedet
+     for å skyve toppen ut, slik `justify-content: center` ville gjort. */
+  main:has([data-room]) > *,
+  main:has([data-print-sheet]) > * {
+    width: 100%;
+    margin-block: auto;
   }
 
   /* Samtalearket er nøyaktig én side. Uke- og dagsblokkene er flex med
@@ -249,7 +301,8 @@ body {
      skriftstørrelsen og ikke sidetallet som gir etter. Liggende A4 nedenfor er
      riktig format også her: en uke er fem dager bred. */
   [data-print-sheet] {
-    height: calc(100vh - 2mm);
+    /* 16 mm er margen `main` legger på, og de to siste er avrundingsmonn. */
+    height: calc(100vh - 18mm);
   }
 
   /* Bunnteksten hører ikke hjemme på et ark med elevnavn, og den stjal den
@@ -263,6 +316,7 @@ body {
      en uke på fem dager, og trenger den samme bredden. */
   @page {
     size: A4 landscape;
-    margin: 10mm;
+    /* Lav, fordi `main` har sin egen marg i tillegg — se over. */
+    margin: 6mm;
   }
 }
