@@ -83,6 +83,13 @@ import type { MeetingKind, MeetingPlan, MeetingSlot } from "@/lib/types";
  * **Oppsettet lagres av seg selv**, med litt forsinkelse, som pultene i
  * klasserommet. En samtaleuke settes opp over flere økter og med telefonen i
  * hånda, og en «Lagre»-knapp læreren rekker å gå fra ville kostet hele uka.
+ *
+ * **Arket er én side.** En samtaleoversikt som fortsetter på side to er ingen
+ * oversikt — læreren skal se hele runden på én gang, og ark nummer to blir
+ * liggende igjen på kopirommet. Retningen følger bredeste uke
+ * (`printLandscape`), alt på arket måles i `em`, og `sheetFont` regner ut hvor
+ * stor den `em`-en kan være når radene skal dele sidehøyden. Det er altså
+ * skriftstørrelsen som gir etter når samtalene blir mange, ikke sidetallet.
  */
 
 /** Hvor lenge det ventes fra siste tastetrykk til oppsettet skrives til disk. */
@@ -237,6 +244,36 @@ export default function MeetingPlanner() {
    * stående blank under.
    */
   const printLandscape = weeks.some((w) => w.dates.length >= 4);
+
+  /**
+   * Radene arket må få plass til: den travleste dagen i hver uke, lagt sammen.
+   * Uke- og dagsblokkene deler høyden mellom seg, så dette er tallet hele
+   * regnestykket under hviler på.
+   */
+  const printRows = useMemo(
+    () => weeks.reduce((n, w) => n + rowsIn(plan?.slots ?? [], w.dates), 0),
+    [weeks, plan]
+  );
+
+  /**
+   * Skriftstørrelsen arket settes med — alt inni er `em`, så hele arket krymper
+   * i takt.
+   *
+   * **Alt skal på én side.** En samtaleoversikt som fortsetter på side to er
+   * ingen oversikt: læreren skal kunne se hele uka på én gang, og et ark nummer
+   * to blir liggende igjen på kopirommet. Arket har derfor en gitt høyde, og
+   * teksten er det som gir etter når samtalene blir mange. Taket er den
+   * størrelsen en samtaleuke med god plass fortjener; gulvet er der for at et
+   * urimelig stort oppsett skal krympe i stedet for å renne over.
+   */
+  const sheetFont = useMemo(() => {
+    // A4 minus 12 mm marg på hver kant, og plassen overskrifta og uke-linjene tar.
+    const sheetMm = printLandscape ? 186 : 273;
+    const chromeMm = 14 + Math.max(1, weeks.length) * 7;
+    const rowMm = (sheetMm - chromeMm) / Math.max(1, printRows);
+    // Et millimeter er ca. 3.78 px, og en rad trenger drøyt to tekstlinjer.
+    return Math.max(5, Math.min(11, rowMm * 3.78 * 0.42));
+  }, [printLandscape, weeks.length, printRows]);
 
   const clashes = useMemo(() => clashingSlots(plan?.slots ?? []), [plan]);
   const unplaced = useMemo(
@@ -1094,12 +1131,16 @@ export default function MeetingPlanner() {
             printLandscape ? "landscape" : "portrait"
           }; margin: 12mm; }`}</style>
 
-          <div data-print-sheet className="hidden print:flex print:flex-col">
-            <header className="mb-2 border-b-2 border-foreground pb-1.5 text-center">
-              <p className="text-lg font-bold leading-tight">
+          <div
+            data-print-sheet
+            className="hidden print:flex print:flex-col"
+            style={{ fontSize: `${sheetFont}px` }}
+          >
+            <header className="mb-[0.4em] border-b-2 border-foreground pb-[0.3em] text-center">
+              <p className="text-[1.7em] font-bold leading-tight">
                 {plan.name || kindLabel(plan.kind)} – {activeClass?.name}
               </p>
-              <p className="mt-0.5 text-[11px] text-muted">
+              <p className="mt-[0.15em] text-[1em] leading-tight text-muted">
                 {plan.teacher.trim() ? `${plan.teacher} · ` : ""}
                 {plural(plan.minutes, "minutt", "minutter")} per samtale
                 {weekSpan ? ` · ${weekSpan}` : ""}
@@ -1107,18 +1148,18 @@ export default function MeetingPlanner() {
             </header>
 
             {weeks.map(({ monday, dates }) => (
-              // `flex-1` er det som fyller arket: dagskortene og radene i dem
-              // strekkes til høyden er brukt opp, i stedet for å klumpe seg
-              // øverst med en halv blank side under. Er det flere rader enn det
-              // er plass til, tar `min-h` over og uka går videre på neste side.
-              <section key={monday} className="mb-3 flex flex-1 flex-col last:mb-0">
+              // `flex-1` er det som fyller arket: ukene deler sidehøyden
+              // mellom seg, dagskortene deler uka, og radene deler kortet.
+              // Ingen av dem krever en egen høyde — hadde de gjort det, ville
+              // en travel uke skjøvet seg selv over på en side to.
+              <section key={monday} className="mb-[0.6em] flex flex-1 flex-col last:mb-0">
                 {/* Ukenummeret står på arket også: to onsdager ser like ut, og
                     det er den forskjellen foresatte må kunne lese. */}
-                <p className="mb-1 text-[11px] font-semibold">
+                <p className="mb-[0.2em] text-[1em] font-semibold leading-tight">
                   {weekLabel(monday)} <span className="font-normal">· {rangeLabel(dates)}</span>
                 </p>
                 <div
-                  className="grid flex-1 gap-2"
+                  className="grid flex-1 gap-[0.45em]"
                   style={{
                     gridTemplateColumns: `repeat(${Math.max(1, dates.length)}, minmax(0, 1fr))`,
                   }}
@@ -1133,7 +1174,7 @@ export default function MeetingPlanner() {
                       key={date}
                       className="flex flex-col rounded border border-border-strong"
                     >
-                      <h2 className="border-b border-border-strong bg-background px-1.5 py-1 text-[11px] font-semibold">
+                      <h2 className="border-b border-border-strong bg-background px-[0.45em] py-[0.25em] text-[1em] font-semibold leading-tight">
                         {dayLabel(date)}
                       </h2>
                       {/* Alle dagene i uka får like mange, like høye rader —
@@ -1146,7 +1187,10 @@ export default function MeetingPlanner() {
                       <ul
                         className="grid flex-1 [&>li:last-child]:border-b-0"
                         style={{
-                          gridTemplateRows: `repeat(${rowsIn(plan.slots, dates)}, minmax(9mm, 1fr))`,
+                          // Ingen minstehøyde i millimeter: radene skal dele
+                          // den høyden arket har, ikke kreve en egen. Et gulv
+                          // her var det som skjøv en travel dag over på side to.
+                          gridTemplateRows: `repeat(${rowsIn(plan.slots, dates)}, minmax(0, 1fr))`,
                         }}
                       >
                         {slotsForDate(plan.slots, date).map((slot) => {
@@ -1161,9 +1205,9 @@ export default function MeetingPlanner() {
                             // navnet uten å lete etter en ledig flekk.
                             <li
                               key={slot.id}
-                              className="flex min-w-0 break-inside-avoid flex-col gap-px overflow-hidden border-b border-border px-1.5 py-1"
+                              className="flex min-w-0 break-inside-avoid flex-col overflow-hidden border-b border-border px-[0.45em] py-[0.2em]"
                             >
-                              <span className="flex items-baseline gap-1.5 text-[11px] leading-tight">
+                              <span className="flex items-baseline gap-[0.4em] text-[1em] leading-tight">
                                 <span className="shrink-0 tabular-nums">
                                   {slot.start}–{slotEnd(slot)}
                                 </span>
@@ -1180,7 +1224,7 @@ export default function MeetingPlanner() {
                               {/* Merknaden på en tid som *også* har en elev —
                                   «på Teams», «tolk» — sto ikke på arket før. */}
                               {navn && note && (
-                                <span className="truncate text-[9px] leading-tight text-muted">
+                                <span className="truncate text-[0.85em] leading-tight text-muted">
                                   {note}
                                 </span>
                               )}
@@ -1210,7 +1254,7 @@ export default function MeetingPlanner() {
             {/* Hvem som ennå ikke har fått en tid hører hjemme på arket: det er
                 dem læreren må ringe, og lista sto bare på skjermen. */}
             {unplaced.length > 0 && (
-              <p className="mt-2 border-t border-border pt-1 text-[10px] leading-snug text-muted">
+              <p className="mt-[0.4em] border-t border-border pt-[0.3em] text-[0.95em] leading-snug text-muted">
                 <span className="font-semibold text-foreground">
                   Uten tid ({unplaced.length}):
                 </span>{" "}

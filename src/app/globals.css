@@ -238,13 +238,24 @@ body {
     padding: 0 !important;
   }
 
-  /* Samtalearket fyller høyden i stedet for å klumpe seg øverst. Uke- og
-     dagsblokkene er flex med `flex-1`, men de strekker seg bare hvis noe over
-     dem har en høyde å fordele — derfor settes den her, på arket selv.
-     `100vh` er arkhøyden innenfor margene i utskrift; det som trekkes fra er
-     bunnteksten under arket. Samtalesida velger selv retning på `@page`. */
+  /* Samtalearket er nøyaktig én side. Uke- og dagsblokkene er flex med
+     `flex-1`, men de fordeler bare en høyde som allerede er gitt — derfor
+     settes den her, på arket selv. `100vh` er arkhøyden innenfor margene i
+     utskrift, og de to millimeterne som trekkes fra er avrundingsmonn: uten
+     dem kunne siste pikselrad tippe over på en tom side to.
+
+     Hele poenget er at læreren skal se uka på én gang. Teksten skaleres etter
+     hvor mange rader arket må vise (`sheetFont` i MeetingPlanner), så det er
+     skriftstørrelsen og ikke sidetallet som gir etter. Samtalesida velger selv
+     retning på `@page`. */
   [data-print-sheet] {
-    min-height: calc(100vh - 16mm);
+    height: calc(100vh - 2mm);
+  }
+
+  /* Bunnteksten hører ikke hjemme på et ark med elevnavn, og den stjal den
+     høyden arket trenger for å være én side. */
+  body:has([data-print-sheet]) footer {
+    display: none !important;
   }
 
   /* Liggende ark: et klasserom er bredere enn det er dypt, og stående A4 ga et

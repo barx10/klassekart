@@ -333,6 +333,27 @@ fra, og et oppsett kan gå over flere uker.
 Samtalearket følger læreren gjennom uka: det henges opp, tas med i samtalen, og
 det skrives på det. Derfor er det et skjema med ruter, ikke en liste.
 
+**Alt skal på én side.** En samtaleoversikt som fortsetter på side to er ingen
+oversikt — læreren skal se hele runden på én gang, og ark nummer to blir liggende
+igjen på kopirommet. Det er skriftstørrelsen som gir etter når samtalene blir
+mange, ikke sidetallet:
+
+- **`[data-print-sheet]` har fast høyde** (`100vh` minus et par millimeter
+  avrundingsmonn), og alt inni deler den med `flex-1`: ukene deler siden,
+  dagskortene deler uka, radene deler kortet. Ingen av dem har en minstehøyde i
+  millimeter — et slikt gulv var nettopp det som skjøv en travel dag over på en
+  side to og etterlot den første tom.
+- **`sheetFont` regner ut hvor stor `em`-en kan være.** Alle mål på arket er
+  `em`, så hele skjemaet krymper i takt. En vanlig samtaleuke treffer taket på
+  11 px; 85 tider på fem dager og fire uker à femten tider får fortsatt plass.
+  Gulvet på 5 px er der for at et urimelig oppsett skal krympe i stedet for å
+  renne over — over rundt 300 tider i ett oppsett går det likevel til side to,
+  og da er det ingen oversikt uansett skriftstørrelse.
+- **Bunnteksten skjules på arket** (`body:has([data-print-sheet]) footer`). Den
+  hører ikke hjemme på et ark med elevnavn, og den stjal høyden arket trenger.
+
+Ellers:
+
 - **Retningen følger bredeste uke** (`printLandscape`). Klassekartet skrives
   alltid liggende, men en samtaleuke på to eller tre dager fikk da tre smale
   spalter oppe i venstre hjørne og to tredeler blankt ark under. Fire og fem
@@ -342,15 +363,13 @@ det skrives på det. Derfor er det et skjema med ruter, ikke en liste.
 - **Uka er ett rutenett, ikke fem lister.** Alle dagene får like mange, like høye
   rader — `rowsIn()` teller den travleste. Lot vi hver dag dele høyden i sin egen
   spalte, fikk tirsdag med to samtaler to ruter på en halv side hver, ved siden av
-  fredag med åtte normale. `[data-print-sheet]` har `min-height` i `vh` nettopp
-  for at `flex-1` skal ha en arkhøyde å fordele.
+  fredag med åtte normale.
 - **Linjene føres helt ned**, med tomme rader under siste samtale. Stoppet de
   der samtalene sluttet, hang den nederste ruten åpen ned i tomrommet og så ut
   som en time som varte til arket sluttet. Tomrommet er dessuten skriveplassen:
   «kom ikke», «ringer tilbake».
-- **Ingen `break-inside: avoid` på dagskortet.** En dag med flere samtaler enn det
-  er plass til ble da dyttet i sin helhet til neste side, etterlot side én tom, og
-  fikk ikke plass der heller. Det er den enkelte raden som ikke skal deles.
+- **Ingen `break-inside: avoid` på dagskortet.** Det er den enkelte raden som
+  ikke skal deles.
 - **Tida står som spenn** («10:00–10:20»), ikke bare starten: det er det de
   foresatte skal vite. En ledig tid står som «ledig» og ikke som en tom rad, og
   en merknad på en tid som *også* har en elev — «på Teams», «tolk» — får sin egen
