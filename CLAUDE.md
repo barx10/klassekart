@@ -139,8 +139,37 @@ Klassekartet havner på papir, og der er det navnene som er hele poenget.
   krever at React rekker å tegne på nytt før nettleseren tar bildet av sida, og
   det kan vi ikke love.
 - **Arket er A4 liggende.** Et klasserom er bredere enn det er dypt.
-  `PRINT_WIDTH`/`PRINT_HEIGHT` er margene minus plassen overskrifta, tavla og
-  bunnteksten tar; blir de satt for høyt, sklir kartet over på side to.
+  `PRINT_WIDTH`/`PRINT_HEIGHT` er margene minus plassen overskrifta og tavla
+  tar; blir de satt for høyt, sklir kartet over på side to. Tallene har litt
+  slakk med vilje — et kart som havner én piksel for lavt tar med seg en helt
+  blank side to, og det er verre enn noen millimeter mindre kart.
+- **Margen ligger på `main`, ikke bare i `@page`.** `@page { margin }` er ikke
+  til å stole på: velger læreren «Marger: ingen» i utskriftsdialogen, blir den
+  overstyrt, og da sto klassenavnet en tidels millimeter fra arkkanten og ble
+  kuttet av skriveren. De 8 millimeterne på `main` overlever uansett hva
+  dialogen står på, og legger seg sammen med `@page`-margen til en vanlig marg
+  når den står normalt.
+- **Lerretet må klippes i utskrift** (`overflow: clip` på `[data-print-area]`).
+  Lerretet er en boks på rommets fulle bredde — 1294 px for et vanlig klasserom
+  — som krympes med `transform: scale()`, og en transform endrer ikke
+  layoutbredden. Med `overflow: visible` stakk de uskalerte pikslene ut av
+  sida, dokumentet ble bredere enn arket, og Chrome krympet **hele** utskriften
+  med 0,82 for å få den inn. Derfor lå kartet lite midt på arket uansett hva
+  `printZoom` regnet ut. Den skalerte ytre boksen har nøyaktig kartets
+  størrelse, så klippingen tar ingenting med seg.
+- **Plassen til verktøylinja trimmes bort på papiret** (`--print-trim`).
+  `TOOLBAR_ROOM` er tom plass under nederste rad som `printZoom` med rette
+  ikke regner med — men lot vi den bli med i lerretsboksens høyde, kom den på
+  arket likevel, og et høyt klasserom skjøv seg selv over på en blank side to.
+- **Bunnteksten skjules, og kartet sentreres** på de to sidene som faktisk
+  skrives ut. Streken over «Lærerliv © 2026» havnet midt på siden så snart
+  innholdet var kortere enn arket, og det er det normale: rommet er bredere
+  enn arket er høyt, så kartet blir bredde-begrenset og lar en tredel av
+  høyden stå igjen. `margin-block: auto` sentrerer uten å kutte noe — blir
+  innholdet høyere enn arket, faller margene bort i stedet for å skyve toppen
+  ut, slik `justify-content: center` ville gjort. Personvernsida holdes utenfor
+  begge deler: den er vanlig tekst som skal flyte over så mange sider den
+  trenger, med bunnteksten på.
 - **Overskrifta på papiret er en egen, midtstilt blokk.** Skjermversjonen står
   til venstre i en spalte som er bredere enn arket, og der forsvant klassenavnet
   ut over margen.

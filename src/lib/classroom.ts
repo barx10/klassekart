@@ -606,12 +606,17 @@ export function canvasSize(desks: Desk[]): { width: number; height: number } {
 }
 
 /**
- * Papirmålene utskriften regnes mot: A4 liggende med 10 mm marg, i piksler ved
- * 96 dpi — samme enhet som resten av lerretet. Liggende fordi et klasserom er
- * bredere enn det er dypt; høyden er trukket ned for overskrifta og tavla som
- * står over rommet på arket.
+ * Papirmålene utskriften regnes mot, i piksler ved 96 dpi — samme enhet som
+ * resten av lerretet. Liggende A4 fordi et klasserom er bredere enn det er
+ * dypt.
+ *
+ * Margen er 6 mm fra `@page` pluss 8 mm fra `main`, altså 14 mm på hver kant:
+ * 269 mm bredde og 182 mm høyde, som er 1017 × 688 px. Høyden er i tillegg
+ * trukket ned for de vel 130 pikslene overskrifta og tavla tar over rommet, og
+ * for litt slakk: et kart som havner en piksel for lavt tar med seg en helt
+ * blank side to, og det er verre enn et kart som er noen millimeter lite.
  */
-export const PRINT_WIDTH = 1030;
+export const PRINT_WIDTH = 1010;
 export const PRINT_HEIGHT = 520;
 
 /**
