@@ -33,6 +33,7 @@ import {
   toDate,
   toMinutes,
   unplacedStudents,
+  weekColumns,
   weekLabel,
   weeksOf,
   withStudentAt,
@@ -84,12 +85,13 @@ import type { MeetingKind, MeetingPlan, MeetingSlot } from "@/lib/types";
  * klasserommet. En samtaleuke settes opp over flere økter og med telefonen i
  * hånda, og en «Lagre»-knapp læreren rekker å gå fra ville kostet hele uka.
  *
- * **Arket er én side, og bare tidene som gjelder noen.** En samtaleoversikt som
- * fortsetter på side to er ingen oversikt — læreren skal se hele runden på én
- * gang. De ledige tidene filtreres bort på papiret (de er reserven i appen, men
- * støy på et ark elevene skal finne tida si på), retningen følger bredeste uke,
- * alt måles i `em`, og skriftstørrelsen regnes ut fra hvor mange rader som skal
- * dele sidehøyden. Alt dette ligger samlet i `sheet`.
+ * **Arket er en ukesvisning på én side.** Fem dagsbokser, mandag til fredag, og
+ * i hver boks en tett liste: «Anna Oline: 10:15–10:45». Hver tid hadde en rute
+ * for seg før, og da tok tolv samtaler hele siden uten å si mer enn tolv linjer
+ * gjør. De ledige tidene filtreres bort på papiret — de er reserven i appen, men
+ * støy på et ark elevene skal finne tida si på. Alt måles i `em`, og
+ * skriftstørrelsen regnes ut fra hvor mange linjer som skal dele sidehøyden, så
+ * en oversikt aldri renner over på side to. Alt dette ligger samlet i `sheet`.
  */
 
 /** Hvor lenge det ventes fra siste tastetrykk til oppsettet skrives til disk. */
@@ -106,8 +108,8 @@ function placedLabel(slot: MeetingSlot): string {
 }
 
 /**
- * Flest tider på én dag i uka — radtallet hele uka tegnes med på arket, så
- * dagene står i høyde med hverandre uansett hvor ujevnt samtalene falt.
+ * Flest tider på én dag i uka. Det er høyden uka trenger på arket — dagene står
+ * ved siden av hverandre, så det er den travleste som bestemmer.
  */
 function rowsIn(slots: MeetingSlot[], dates: string[]): number {
   return Math.max(1, ...dates.map((d) => slotsForDate(slots, d).length));
@@ -265,26 +267,25 @@ export default function MeetingPlanner() {
     const brukt = alle.filter((s) => s.student_id || s.note.trim());
     const slots = brukt.length > 0 ? brukt : alle;
 
-    const sheetWeeks = weeksOf(datesOf(slots));
-    // Liggende først når uka er bred nok til å trenge det: fire og fem
-    // dagsspalter får ikke plass på stående A4 uten at navnene brekker, to og
-    // tre gjør det med god margin.
-    const landscape = sheetWeeks.some((w) => w.dates.length >= 4);
+    // Hver uke får alle fem hverdagene, ikke bare dem som har noe: arket er en
+    // ukesvisning, og en onsdagsspalte som flytter seg fra uke til uke er ingen.
+    const weeks = weeksOf(datesOf(slots)).map(({ monday, dates }) => ({
+      monday,
+      dates: weekColumns(monday, dates),
+    }));
 
-    // Radene arket må få plass til: den travleste dagen i hver uke, lagt sammen.
-    const rows = sheetWeeks.reduce((n, w) => n + rowsIn(slots, w.dates), 0);
-    // A4 minus 12 mm marg på hver kant, og plassen overskrifta og uke-linjene tar.
-    const sheetMm = landscape ? 186 : 273;
-    const chromeMm = 14 + Math.max(1, sheetWeeks.length) * 7;
-    const rowMm = (sheetMm - chromeMm) / Math.max(1, rows);
-    // Et millimeter er ca. 3.78 px, og en rad trenger drøyt to tekstlinjer.
-    const font = Math.max(5, Math.min(11, rowMm * 3.78 * 0.42));
+    // Linjene arket må få plass til: den travleste dagen i hver uke, lagt sammen.
+    const rows = weeks.reduce((n, w) => n + rowsIn(slots, w.dates), 0);
+    // Liggende A4 minus 12 mm marg, og plassen overskrifta og uke-linjene tar.
+    const rowMm = (186 - 14 - Math.max(1, weeks.length) * 7) / Math.max(1, rows);
+    // Et millimeter er ca. 3.78 px, og en linje trenger drøyt sin egen høyde.
+    const font = Math.max(5, Math.min(11, (rowMm * 3.78) / 1.45));
 
-    const first = sheetWeeks[0] ? isoWeek(sheetWeeks[0].monday) : 0;
-    const last = sheetWeeks.length ? isoWeek(sheetWeeks[sheetWeeks.length - 1].monday) : 0;
+    const first = weeks[0] ? isoWeek(weeks[0].monday) : 0;
+    const last = weeks.length ? isoWeek(weeks[weeks.length - 1].monday) : 0;
     const span = first ? (first === last ? `uke ${first}` : `uke ${first}–${last}`) : "";
 
-    return { slots, weeks: sheetWeeks, landscape, font, span };
+    return { slots, weeks, font, span };
   }, [plan]);
 
   const clashes = useMemo(() => clashingSlots(plan?.slots ?? []), [plan]);
@@ -1131,24 +1132,20 @@ export default function MeetingPlanner() {
           )}
 
           {/* --- Arket. Egen blokk, ikke redigeringen med feltene skrudd av:
-              på papiret er det tida og navnet som er hele poenget, og en side
-              full av nedtrekkslister og «fjern»-kryss er ikke til å lese. --- */}
+              på papiret er det navnet og tida som er hele poenget, og en side
+              full av nedtrekkslister og «fjern»-kryss er ikke til å lese.
 
-          {/* Papirretningen følger bredeste uke. Klassekartet skrives alltid
-              liggende — et klasserom er bredere enn det er dypt — men en
-              samtaleuke med to eller tre dager fikk da tre smale spalter oppe i
-              venstre hjørne og to tredeler blankt ark under. Tre dager står
-              bedre stående; fire og fem trenger bredden. */}
-          <style media="print">{`@page { size: A4 ${
-            sheet.landscape ? "landscape" : "portrait"
-          }; margin: 12mm; }`}</style>
-
+              Arket er en **ukesvisning**: én rad med fem dagsbokser, og i hver
+              boks en tett liste — «Anna Oline: 10:15–10:45». Hver tid hadde en
+              rute for seg før, og da tok fem samtaler hele siden uten å si mer
+              enn fem linjer gjør. Liggende A4 er gitt av utskriftsreglene, og
+              det er formatet en uke skal leses i. --- */}
           <div
             data-print-sheet
             className="hidden print:flex print:flex-col"
             style={{ fontSize: `${sheet.font}px` }}
           >
-            <header className="mb-[0.4em] border-b-2 border-foreground pb-[0.3em] text-center">
+            <header className="mb-[0.5em] border-b-2 border-foreground pb-[0.35em] text-center">
               <p className="text-[1.7em] font-bold leading-tight">
                 {plan.name || kindLabel(plan.kind)} – {activeClass?.name}
               </p>
@@ -1160,14 +1157,13 @@ export default function MeetingPlanner() {
             </header>
 
             {sheet.weeks.map(({ monday, dates }) => (
-              // `flex-1` er det som fyller arket: ukene deler sidehøyden
-              // mellom seg, dagskortene deler uka, og radene deler kortet.
-              // Ingen av dem krever en egen høyde — hadde de gjort det, ville
-              // en travel uke skjøvet seg selv over på en side to.
-              <section key={monday} className="mb-[0.6em] flex flex-1 flex-col last:mb-0">
+              // `flex-1` er det som fyller arket: ukene deler sidehøyden mellom
+              // seg og dagsboksene deler uka. Innholdet står tett øverst i hver
+              // boks, og det som blir til overs er skriveplass.
+              <section key={monday} className="mb-[0.7em] flex flex-1 flex-col last:mb-0">
                 {/* Ukenummeret står på arket også: to onsdager ser like ut, og
                     det er den forskjellen foresatte må kunne lese. */}
-                <p className="mb-[0.2em] text-[1em] font-semibold leading-tight">
+                <p className="mb-[0.25em] text-[1em] font-semibold leading-tight">
                   {weekLabel(monday)} <span className="font-normal">· {rangeLabel(dates)}</span>
                 </p>
                 <div
@@ -1177,85 +1173,40 @@ export default function MeetingPlanner() {
                   }}
                 >
                   {dates.map((date) => (
-                    // Ingen `break-inside-avoid` her. En dag med flere
-                    // samtaler enn det er plass til på arket ble da dyttet i
-                    // sin helhet til neste side, og etterlot side én tom — for
-                    // så ikke å få plass der heller. Det er den enkelte raden
-                    // som ikke skal deles, og den holder `li` på.
                     <div
                       key={date}
-                      className="flex flex-col rounded border border-border-strong"
+                      className="flex flex-col overflow-hidden rounded border border-border-strong"
                     >
-                      <h2 className="border-b border-border-strong bg-background px-[0.45em] py-[0.25em] text-[1em] font-semibold leading-tight">
+                      <h2 className="border-b border-border-strong bg-background px-[0.5em] py-[0.3em] text-[1em] font-semibold leading-tight">
                         {dayLabel(date)}
                       </h2>
-                      {/* Alle dagene i uka får like mange, like høye rader —
-                          styrt av den travleste. Lot vi radene bare dele
-                          høyden i sin egen spalte, fikk tirsdag med to
-                          samtaler to ruter på en halv side hver, ved siden av
-                          fredag med åtte normale. Nå ligger uka som ett
-                          rutenett, og den rolige dagen har bare tomme ruter
-                          nederst. */}
-                      <ul
-                        className="grid flex-1 [&>li:last-child]:border-b-0"
-                        style={{
-                          // Ingen minstehøyde i millimeter: radene skal dele
-                          // den høyden arket har, ikke kreve en egen. Et gulv
-                          // her var det som skjøv en travel dag over på side to.
-                          gridTemplateRows: `repeat(${rowsIn(sheet.slots, dates)}, minmax(0, 1fr))`,
-                        }}
-                      >
+                      <ul className="flex flex-col px-[0.5em] py-[0.35em]">
                         {slotsForDate(sheet.slots, date).map((slot) => {
                           const student = slot.student_id ? byId.get(slot.student_id) : undefined;
                           const navn = student?.name ?? (slot.student_id ? UNKNOWN : "");
                           const note = slot.note.trim();
+                          // En tid uten elev er enten en merknad læreren har
+                          // satt av — «Møte med PPT» — eller, når ingen er
+                          // fordelt ennå, en åpen tid. Da står tida alene; et
+                          // «ledig:» foran hver linje sa ingenting.
+                          const hvem = navn || note;
                           return (
-                            // Radene deler høyden mellom seg, og tomrommet som
-                            // blir til overs er skriveplass: arket følger
-                            // læreren gjennom uka, og det skal gå an å notere
-                            // «kom ikke» eller «ringer tilbake» ved siden av
-                            // navnet uten å lete etter en ledig flekk.
                             <li
                               key={slot.id}
-                              className="flex min-w-0 break-inside-avoid flex-col overflow-hidden border-b border-border px-[0.45em] py-[0.2em]"
+                              className="truncate py-[0.12em] text-[1em] leading-tight"
                             >
-                              <span className="flex items-baseline gap-[0.4em] text-[1em] leading-tight">
-                                <span className="shrink-0 tabular-nums">
-                                  {slot.start}–{slotEnd(slot)}
-                                </span>
-                                {/* Uten navn *og* uten merknad er tida ledig.
-                                    Tom rad så det ut som noe var glemt. */}
-                                <span
-                                  className={`min-w-0 flex-1 truncate ${
-                                    navn || note ? "font-medium" : "text-subtle"
-                                  }`}
-                                >
-                                  {navn || note || "ledig"}
-                                </span>
+                              {hvem && <span className="font-medium">{hvem}: </span>}
+                              <span className="tabular-nums">
+                                {slot.start}–{slotEnd(slot)}
                               </span>
                               {/* Merknaden på en tid som *også* har en elev —
                                   «på Teams», «tolk» — sto ikke på arket før. */}
                               {navn && note && (
-                                <span className="truncate text-[0.85em] leading-tight text-muted">
-                                  {note}
-                                </span>
+                                <span className="text-muted"> ({note})</span>
                               )}
                             </li>
                           );
                         })}
-                        {/* Linjene føres helt ned. Stoppet de ved siste
-                            samtale, hang den nederste raden åpen ned i
-                            tomrommet og så ut som en time som varte til
-                            arket sluttet — og en tid læreren vil føre på
-                            for hånd hadde ingen linje å stå på. */}
-                        {Array.from({
-                          length: Math.max(
-                            0,
-                            rowsIn(sheet.slots, dates) - slotsForDate(sheet.slots, date).length
-                          ),
-                        }).map((_, i) => (
-                          <li key={`tom-${i}`} className="border-b border-border" />
-                        ))}
                       </ul>
                     </div>
                   ))}

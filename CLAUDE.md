@@ -330,72 +330,42 @@ fra, og et oppsett kan gå over flere uker.
 
 #### Arket
 
-Samtalearket følger læreren gjennom uka: det henges opp, tas med i samtalen, og
-det skrives på det. Derfor er det et skjema med ruter, ikke en liste.
+Arket er en **ukesvisning på liggende A4**: én rad med fem dagsbokser, mandag til
+fredag, og i hver boks en tett liste — «Anna Oline: 10:15–10:45». Hver tid hadde
+en rute for seg før, og da tok tolv samtaler hele siden uten å si mer enn tolv
+linjer gjør.
 
-**Bare tidene som gjelder noen kommer med.** De ledige tidene er nyttige i appen
-— de er reserven når en familie må bytte dag — men på papiret er de støy: læreren
-henger opp arket for at elevene skal finne tida si, og tjue rader som sier «ledig»
-gjør den vanskeligere å finne. `sheet.slots` filtrerer dem bort, og dagene og
-ukene arket viser er utledet av det som blir igjen, så en dag ingen skal ha
-mister spalta si.
-
-Å slette dem automatisk når siste elev har fått tid — det nærliggende
-alternativet — ville tatt fra læreren nettopp den reserven, midt i uka der den
-trengs mest. «Fjern ledige tider» finnes fortsatt som en knapp, men den rydder
-oppsettet, ikke arket.
-
-Er ingen fordelt ennå, står alle tidene der: det er den *tomme* uka læreren vil
-ha på papir, og et blankt ark hadde vært svaret ellers.
-
-**Alt skal på én side.** En samtaleoversikt som fortsetter på side to er ingen
-oversikt — læreren skal se hele runden på én gang, og ark nummer to blir liggende
-igjen på kopirommet. Det er skriftstørrelsen som gir etter når samtalene blir
-mange, ikke sidetallet:
-
-- **`[data-print-sheet]` har fast høyde** (`100vh` minus et par millimeter
-  avrundingsmonn), og alt inni deler den med `flex-1`: ukene deler siden,
-  dagskortene deler uka, radene deler kortet. Ingen av dem har en minstehøyde i
-  millimeter — et slikt gulv var nettopp det som skjøv en travel dag over på en
-  side to og etterlot den første tom.
-- **`sheetFont` regner ut hvor stor `em`-en kan være.** Alle mål på arket er
-  `em`, så hele skjemaet krymper i takt. En vanlig samtaleuke treffer taket på
-  11 px; 85 tider på fem dager og fire uker à femten tider får fortsatt plass.
-  Gulvet på 5 px er der for at et urimelig oppsett skal krympe i stedet for å
-  renne over — over rundt 300 tider i ett oppsett går det likevel til side to,
-  og da er det ingen oversikt uansett skriftstørrelse.
+- **Alle fem hverdagene får spalte** (`weekColumns`), ikke bare dagene som har
+  noe. En onsdagsspalte som flytter seg fra uke til uke er ingen ukesvisning.
+  En lørdag eller søndag læreren har lagt en samtale på kommer i tillegg.
+- **Bare tidene som gjelder noen kommer med.** De ledige tidene er reserven i
+  appen — den læreren trenger når en familie må bytte dag — men på papiret er de
+  støy: arket henges opp for at elevene skal finne tida si, og tjue linjer som
+  sier «ledig» gjør den vanskeligere å finne. Å slette dem automatisk når siste
+  elev har fått tid ville tatt reserven fra læreren midt i uka der den trengs
+  mest; «Fjern ledige tider» rydder oppsettet, ikke arket. Er ingen fordelt
+  ennå, står alle tidene der — det er den *tomme* uka læreren vil ha på papir,
+  og et blankt ark hadde vært svaret ellers.
+- **Alt skal på én side.** En oversikt som fortsetter på side to er ingen
+  oversikt — læreren skal se hele runden på én gang, og ark nummer to blir
+  liggende igjen på kopirommet. `[data-print-sheet]` har fast høyde (`100vh`
+  minus et par millimeter avrundingsmonn), ukene deler den med `flex-1`, og
+  dagsboksene deler uka. Alle mål er `em`, og `sheet.font` regner ut hvor stor
+  den `em`-en kan være når linjene skal dele høyden. Det er altså
+  skriftstørrelsen som gir etter når samtalene blir mange, ikke sidetallet — en
+  full arbeidsuke med 85 tider og fire uker à femten får alle plass.
+- **Alt arket trenger ligger samlet i `sheet`** — tidene, ukene, skriften og
+  ukespennet. Skjermens egne `weeks` og `weekSpan` teller *alle* tidene, og de
+  to skal ikke blandes.
 - **Bunnteksten skjules på arket** (`body:has([data-print-sheet]) footer`). Den
   hører ikke hjemme på et ark med elevnavn, og den stjal høyden arket trenger.
-
-Ellers:
-
-- **Alt arket trenger ligger samlet i `sheet`** — tidene, ukene, retningen,
-  skriftstørrelsen og ukespennet. Skjermens egne `weeks` og `weekSpan` teller
-  *alle* tidene, og de to skal ikke blandes.
-- **Retningen følger bredeste uke** (`sheet.landscape`). Klassekartet skrives
-  alltid liggende, men en samtaleuke på to eller tre dager fikk da tre smale
-  spalter oppe i venstre hjørne og to tredeler blankt ark under. Fire og fem
-  spalter trenger bredden; færre står bedre stående. Den regnes av dagene som
-  faktisk kommer med, så en uke der bare to dager har samtaler blir stående.
-  Samtalesida overstyrer
-  `@page` med en egen `<style media="print">`, som forsvinner med komponenten når
-  læreren går videre til klasserommet.
-- **Uka er ett rutenett, ikke fem lister.** Alle dagene får like mange, like høye
-  rader — `rowsIn()` teller den travleste. Lot vi hver dag dele høyden i sin egen
-  spalte, fikk tirsdag med to samtaler to ruter på en halv side hver, ved siden av
-  fredag med åtte normale.
-- **Linjene føres helt ned**, med tomme rader under siste samtale. Stoppet de
-  der samtalene sluttet, hang den nederste ruten åpen ned i tomrommet og så ut
-  som en time som varte til arket sluttet. Tomrommet er dessuten skriveplassen:
-  «kom ikke», «ringer tilbake».
-- **Ingen `break-inside: avoid` på dagskortet.** Det er den enkelte raden som
-  ikke skal deles.
-- **Tida står som spenn** («10:00–10:20»), ikke bare starten: det er det de
-  foresatte skal vite. En ledig tid står som «ledig» og ikke som en tom rad, og
-  en merknad på en tid som *også* har en elev — «på Teams», «tolk» — får sin egen
-  linje under navnet.
+- **Tida står som spenn** («10:15–10:45»), ikke bare starten: det er det de
+  foresatte skal vite. En merknad på en tid som *også* har en elev — «på Teams»,
+  «tolk» — står i parentes etter tida, og en tid som bare er en merknad står med
+  merknaden som navn.
 - **Elever uten tid står nederst på arket.** Det er dem læreren må ringe, og
   lista sto bare på skjermen.
+
 - **Egen side og ikke et vindu.** Skjemaet er en uke bredt, og læreren blir
   sittende i det en stund av gangen.
 - **Feltene med hjelpetekst peker på feltet med `htmlFor`.** En `<label>` som

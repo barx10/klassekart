@@ -282,6 +282,20 @@ export function weeksOf(dates: string[]): { monday: string; dates: string[] }[] 
 }
 
 /**
+ * Spaltene ei uke får på arket: mandag til fredag, alltid alle fem, pluss en
+ * lørdag eller søndag læreren måtte ha lagt en samtale på.
+ *
+ * Arket er en ukesvisning, ikke en liste over dagene som tilfeldigvis har noe.
+ * Uten de tomme dagene flyttet spaltene seg fra uke til uke, og læreren måtte
+ * lese dagsnavnet for å vite hvor onsdagen var.
+ */
+export function weekColumns(monday: string, dates: string[]): string[] {
+  const hverdager = [0, 1, 2, 3, 4].map((i) => addDays(monday, i));
+  const helg = dates.filter((d) => !hverdager.includes(d));
+  return [...hverdager, ...helg].sort((a, b) => a.localeCompare(b));
+}
+
+/**
  * Bygger tidene på nytt fra skjemaet: for hver valgte ukedag i hver uke, fra
  * `day_start`, én samtale om gangen med `gap` mellom, til det ikke er plass til
  * én til før `day_end`.
