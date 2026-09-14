@@ -17,8 +17,10 @@ import {
   clashingSlots,
   datesOf,
   dayLabel,
+  daysBetween,
   defaultMinutes,
   fillSlots,
+  isoWeek,
   kindLabel,
   mondayOf,
   newSlotId,
@@ -60,6 +62,13 @@ import type { MeetingKind, MeetingPlan, MeetingSlot } from "@/lib/types";
  * onsdagen etter. Skal hele runden skyves, er det en egen knapp som gjør det —
  * synlig, og ikke som en bieffekt av et datofelt.
  *
+ * **Men da må spriket være synlig.** Uka i skjemaet og uka tidene ligger i er to
+ * ulike ting, og et klikk på «uka etter» i skjemaet så ut som at det ikke virket:
+ * det sto «Uke 40» over et skjema med uke 39 under. Nå står de to ukene mot
+ * hverandre i en linje (`outOfSync`) med begge utveiene som knapper — flytt
+ * tidene hit, eller sett skjemaet tilbake. Ingen av dem gjør noe læreren ikke har
+ * bedt om, og ingen av dem lar spriket bli stående usagt.
+ *
  * **Oppsettet gjelder én kontaktlærer om gangen.** En klasse har gjerne to som
  * tar hver sine samtaler, og det er egne elever læreren skal sette opp. Utvalget
  * følger `contact_teacher` på eleven, altså det som står i elevlista — settes det
@@ -97,11 +106,24 @@ function SlotCount({ used, total }: { used: number; total: number }) {
   );
 }
 
-/** Overskrifta over en bolk i skjemaet, så feltene ikke flyter i én lang rad. */
-function FieldGroup({ title, children }: { title: string; children: React.ReactNode }) {
+/**
+ * Overskrifta over en bolk i skjemaet, så feltene ikke flyter i én lang rad.
+ * `hint` er til bolken som trenger å si hva feltene *ikke* gjør — uten den var
+ * det umulig å se at skjemafeltene bare er en oppskrift på nye tider.
+ */
+function FieldGroup({
+  title,
+  hint,
+  children,
+}: {
+  title: string;
+  hint?: React.ReactNode;
+  children: React.ReactNode;
+}) {
   return (
     <div className="flex flex-col gap-1.5">
       <h3 className="text-[11px] font-semibold uppercase tracking-wide text-subtle">{title}</h3>
+      {hint && <p className="-mt-0.5 text-xs text-subtle">{hint}</p>}
       <div className="flex flex-wrap items-end gap-3">{children}</div>
     </div>
   );
@@ -183,6 +205,22 @@ export default function MeetingPlanner() {
     const dates = datesOf(plan?.slots ?? []);
     return dates[dates.length - 1] ?? plan?.week_start ?? "";
   }, [plan]);
+
+  /**
+   * Mandagen tidene faktisk begynner i, og «uke 39» / «uke 39–40» til å si det
+   * med. Skjemaets `week_start` sier bare hvor *nye* tider lages, så de to kan
+   * peke hver sin vei — og det er nettopp det som må stå skrevet et sted.
+   */
+  const slotMonday = weeks[0]?.monday ?? "";
+  const weekSpan = useMemo(() => {
+    if (weeks.length === 0) return "";
+    const first = isoWeek(weeks[0].monday);
+    const last = isoWeek(weeks[weeks.length - 1].monday);
+    return first === last ? `uke ${first}` : `uke ${first}–${last}`;
+  }, [weeks]);
+
+  /** Skjemaet peker på en annen uke enn den tidene ligger i. */
+  const outOfSync = plan !== null && slotMonday !== "" && slotMonday !== plan.week_start;
 
   const clashes = useMemo(() => clashingSlots(plan?.slots ?? []), [plan]);
   const unplaced = useMemo(
@@ -286,6 +324,27 @@ export default function MeetingPlanner() {
       week_start: addDays(plan.week_start, delta * 7) || plan.week_start,
       slots: plan.slots.map((s) => ({ ...s, date: addDays(s.date, delta * 7) || s.date })),
     });
+  }
+
+  /**
+   * Flytter tidene bort til uka skjemaet står på. Den ene utveien når de to
+   * spriker: klokkeslettene, merknadene og elevene følger med, bare datoene
+   * skyves. Skjemaet står allerede der, så det røres ikke.
+   */
+  function moveSlotsToPlanWeek() {
+    if (!plan || !slotMonday) return;
+    const days = daysBetween(slotMonday, plan.week_start);
+    if (days === 0) return;
+    update({
+      ...plan,
+      slots: plan.slots.map((s) => ({ ...s, date: addDays(s.date, days) || s.date })),
+    });
+  }
+
+  /** Den andre utveien: skjemaet settes tilbake til uka tidene ligger i. */
+  function matchPlanToSlots() {
+    if (!slotMonday) return;
+    change({ week_start: slotMonday });
   }
 
   /** Ny tid etter den siste den dagen, ellers først i arbeidsdagen. */
@@ -629,15 +688,25 @@ export default function MeetingPlanner() {
               </div>
             </FieldGroup>
 
-            <FieldGroup title="Skjemaet «Lag tidene» fyller">
+            <FieldGroup
+              title="Oppskrift på nye tider"
+              hint={
+                <>
+                  Feltene her er bare en oppskrift: de bestemmer hva{" "}
+                  <strong className="text-muted">«Lag tidene»</strong> fyller uka med. De flytter
+                  ingen tid som alt står i oversikten under.
+                </>
+              }
+            >
               <div>
                 <span className="mb-1 flex items-center gap-1 text-xs text-muted">
-                  <label htmlFor={weekId}>Starter uke</label>
+                  <label htmlFor={weekId}>Lag tider fra uke</label>
                   <HelpTip label="Hva gjør uke-feltet?">
                     Uka sier hvor <strong className="text-foreground">nye</strong> tider lages, og
                     flytter ingen tid som alt står i oversikten — de har sin egen dato, og kan være
-                    avtalt med noen. Skal hele runden utsettes, bruker du «Flytt tidene» under.
-                    Treffer du en annen ukedag i kalenderen, starter oppsettet på mandagen i den uka.
+                    avtalt med noen. Endrer du uka uten å lage tidene på nytt, sier appen fra og
+                    tilbyr deg å flytte dem. Treffer du en annen ukedag i kalenderen, starter
+                    oppsettet på mandagen i den uka.
                   </HelpTip>
                 </span>
                 <div className="flex items-center gap-1">
@@ -805,30 +874,6 @@ export default function MeetingPlanner() {
                 Fjern ledige tider
               </button>
 
-              {/* Å skyve hele runden er en egen handling, ikke en bieffekt av
-                  uke-feltet: her er det datoene som faktisk flytter seg. */}
-              <span className="flex items-center gap-1 text-xs text-muted">
-                Flytt tidene
-                <button
-                  type="button"
-                  onClick={() => shiftWeeks(-1)}
-                  disabled={totalSlots === 0}
-                  title="Flytt alle tidene en uke tilbake"
-                  className={secondaryButton("sm")}
-                >
-                  − 1 uke
-                </button>
-                <button
-                  type="button"
-                  onClick={() => shiftWeeks(1)}
-                  disabled={totalSlots === 0}
-                  title="Flytt alle tidene en uke fram"
-                  className={secondaryButton("sm")}
-                >
-                  + 1 uke
-                </button>
-              </span>
-
               <button
                 type="button"
                 onClick={clearStudents}
@@ -859,16 +904,55 @@ export default function MeetingPlanner() {
 
           {/* --- Status --- */}
           <div data-print-hide className="flex flex-wrap items-center gap-3 text-xs">
+            {/* «fordelt på 1 uke» sto her før, rett under et skjema der det sto
+                «2 uker» — to tall om det samme ordet som ikke var det samme. Nå
+                står ukenummeret, som er det læreren kan kjenne igjen. */}
             <span className="text-subtle" role="status">
               {students.length - unplaced.length} av {plural(students.length, "elev", "elever")} satt
               opp
               {plan.teacher.trim() ? ` hos ${plan.teacher}` : " i klassen"} ·{" "}
-              {plural(totalSlots, "tid", "tider")} fordelt på {plural(weeks.length, "uke", "uker")}
+              {plural(totalSlots, "tid", "tider")}
+              {weekSpan ? ` i ${weekSpan}` : ""}
             </span>
             <span className={saved ? "text-subtle" : "text-accent-text"}>
               {saved ? "Lagret" : "Lagrer …"}
             </span>
           </div>
+
+          {/* Skjemaet peker et annet sted enn tidene ligger. Det er lov — nye
+              tider kan godt lages i uka etter — men det skal ikke være noe
+              læreren må gjette seg til av to ukenumre som ikke stemmer. */}
+          {outOfSync && (
+            <div
+              role="status"
+              data-print-hide
+              className="flex flex-wrap items-center gap-x-3 gap-y-2 rounded-lg border border-accent/40 bg-accent-soft px-3 py-2 text-xs text-foreground"
+            >
+              <span>
+                Skjemaet lager nye tider fra{" "}
+                <strong>{weekLabel(plan.week_start).toLowerCase()}</strong>, men tidene under ligger
+                i <strong>{weekSpan}</strong>.
+              </span>
+              <span className="flex flex-wrap items-center gap-1.5">
+                <button
+                  type="button"
+                  onClick={moveSlotsToPlanWeek}
+                  title="Flytt alle tidene, med elever og merknader, til uka skjemaet står på"
+                  className={secondaryButton("sm")}
+                >
+                  Flytt tidene til {weekLabel(plan.week_start).toLowerCase()}
+                </button>
+                <button
+                  type="button"
+                  onClick={matchPlanToSlots}
+                  title="Sett skjemaet tilbake til uka tidene ligger i"
+                  className={ghostButton("sm")}
+                >
+                  Sett skjemaet til {weekSpan.split("–")[0]}
+                </button>
+              </span>
+            </div>
+          )}
 
           {foreign > 0 && (
             <p
@@ -897,6 +981,33 @@ export default function MeetingPlanner() {
               <p className="text-sm text-muted">
                 Ingen tider ennå. Trykk «Lag tidene» for å fylle uka fra skjemaet over.
               </p>
+            )}
+
+            {/* Å skyve hele runden står her, ved tidene den flytter, og ikke
+                blant skjemaknappene: der sto to knapper som het «uke» rett ved
+                to felt som også het «uke», og bare én av dem flyttet noe.
+                Spriker skjemaet og tidene, viker raden for varselet over — to
+                linjer om uke 38 rett etter hverandre er ingen hjelp. */}
+            {weeks.length > 0 && !outOfSync && (
+              <div className="flex flex-wrap items-center gap-2 text-xs text-muted">
+                <span>Hele runden ligger i {weekSpan}. Skal den utsettes?</span>
+                <button
+                  type="button"
+                  onClick={() => shiftWeeks(-1)}
+                  title="Flytt alle tidene, og skjemaet, en uke tilbake"
+                  className={secondaryButton("sm")}
+                >
+                  ‹ En uke tidligere
+                </button>
+                <button
+                  type="button"
+                  onClick={() => shiftWeeks(1)}
+                  title="Flytt alle tidene, og skjemaet, en uke fram"
+                  className={secondaryButton("sm")}
+                >
+                  En uke senere ›
+                </button>
+              </div>
             )}
 
             {weeks.map(({ monday, dates }) => (
@@ -1018,8 +1129,8 @@ export default function MeetingPlanner() {
             <>
               Alle tidene i oppsettet settes opp på nytt fra skjemaet — {weekLabel(plan.week_start)}{" "}
               og {plural(plan.weeks, "uke", "uker")} fram — og tider du har flyttet for hånd eller
-              skrevet merknad på forsvinner. Elevene som står oppført beholder dagen sin, og settes
-              inn igjen i tidene den dagen får.
+              skrevet merknad på forsvinner. Elevene som står oppført beholder ukedagen sin: den som
+              skulle tirsdag får tirsdag, også om tidene nå lages i en annen uke.
             </>
           }
           confirmLabel="Lag tidene"
