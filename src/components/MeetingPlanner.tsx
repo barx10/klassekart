@@ -84,12 +84,12 @@ import type { MeetingKind, MeetingPlan, MeetingSlot } from "@/lib/types";
  * klasserommet. En samtaleuke settes opp over flere økter og med telefonen i
  * hånda, og en «Lagre»-knapp læreren rekker å gå fra ville kostet hele uka.
  *
- * **Arket er én side.** En samtaleoversikt som fortsetter på side to er ingen
- * oversikt — læreren skal se hele runden på én gang, og ark nummer to blir
- * liggende igjen på kopirommet. Retningen følger bredeste uke
- * (`printLandscape`), alt på arket måles i `em`, og `sheetFont` regner ut hvor
- * stor den `em`-en kan være når radene skal dele sidehøyden. Det er altså
- * skriftstørrelsen som gir etter når samtalene blir mange, ikke sidetallet.
+ * **Arket er én side, og bare tidene som gjelder noen.** En samtaleoversikt som
+ * fortsetter på side to er ingen oversikt — læreren skal se hele runden på én
+ * gang. De ledige tidene filtreres bort på papiret (de er reserven i appen, men
+ * støy på et ark elevene skal finne tida si på), retningen følger bredeste uke,
+ * alt måles i `em`, og skriftstørrelsen regnes ut fra hvor mange rader som skal
+ * dele sidehøyden. Alt dette ligger samlet i `sheet`.
  */
 
 /** Hvor lenge det ventes fra siste tastetrykk til oppsettet skrives til disk. */
@@ -238,42 +238,54 @@ export default function MeetingPlanner() {
   const outOfSync = plan !== null && slotMonday !== "" && slotMonday !== plan.week_start;
 
   /**
-   * Arket legges liggende først når uka er bred nok til å trenge det. Fire og
-   * fem dagsspalter får ikke plass på stående A4 uten at navnene brekker; to og
-   * tre gjør det med god margin, og stående gir dem den høyden som ellers ble
-   * stående blank under.
-   */
-  const printLandscape = weeks.some((w) => w.dates.length >= 4);
-
-  /**
-   * Radene arket må få plass til: den travleste dagen i hver uke, lagt sammen.
-   * Uke- og dagsblokkene deler høyden mellom seg, så dette er tallet hele
-   * regnestykket under hviler på.
-   */
-  const printRows = useMemo(
-    () => weeks.reduce((n, w) => n + rowsIn(plan?.slots ?? [], w.dates), 0),
-    [weeks, plan]
-  );
-
-  /**
-   * Skriftstørrelsen arket settes med — alt inni er `em`, så hele arket krymper
-   * i takt.
+   * Arket: alt som skiller papiret fra skjermen, regnet ut ett sted.
+   *
+   * **Bare tidene som gjelder noen kommer med.** De ledige er nyttige i appen —
+   * de er reserven når en familie må bytte dag — men på papiret er de støy:
+   * læreren henger opp arket for at elevene skal finne tida si, og tjue rader
+   * som sier «ledig» gjør den vanskeligere å finne. De filtreres altså bort
+   * ved utskrift, og blir liggende i oppsettet. Å slette dem automatisk, når
+   * siste elev har fått tid, ville tatt fra læreren nettopp den reserven —
+   * midt i uka der den trengs mest.
+   *
+   * Er ingen fordelt ennå, er det den *tomme* uka læreren vil ha på papir, og
+   * da står alle tidene der. Ellers ville «Skriv ut» før fordelingen gitt et
+   * blankt ark.
    *
    * **Alt skal på én side.** En samtaleoversikt som fortsetter på side to er
-   * ingen oversikt: læreren skal kunne se hele uka på én gang, og et ark nummer
-   * to blir liggende igjen på kopirommet. Arket har derfor en gitt høyde, og
-   * teksten er det som gir etter når samtalene blir mange. Taket er den
-   * størrelsen en samtaleuke med god plass fortjener; gulvet er der for at et
-   * urimelig stort oppsett skal krympe i stedet for å renne over.
+   * ingen oversikt: læreren skal kunne se hele runden på én gang, og et ark
+   * nummer to blir liggende igjen på kopirommet. Arket har en gitt høyde, og
+   * `font` er det som gir etter når samtalene blir mange — alt inni måles i
+   * `em`, så hele skjemaet krymper i takt. Taket er den størrelsen en
+   * samtaleuke med god plass fortjener; gulvet er der for at et urimelig stort
+   * oppsett skal krympe i stedet for å renne over.
    */
-  const sheetFont = useMemo(() => {
+  const sheet = useMemo(() => {
+    const alle = plan?.slots ?? [];
+    const brukt = alle.filter((s) => s.student_id || s.note.trim());
+    const slots = brukt.length > 0 ? brukt : alle;
+
+    const sheetWeeks = weeksOf(datesOf(slots));
+    // Liggende først når uka er bred nok til å trenge det: fire og fem
+    // dagsspalter får ikke plass på stående A4 uten at navnene brekker, to og
+    // tre gjør det med god margin.
+    const landscape = sheetWeeks.some((w) => w.dates.length >= 4);
+
+    // Radene arket må få plass til: den travleste dagen i hver uke, lagt sammen.
+    const rows = sheetWeeks.reduce((n, w) => n + rowsIn(slots, w.dates), 0);
     // A4 minus 12 mm marg på hver kant, og plassen overskrifta og uke-linjene tar.
-    const sheetMm = printLandscape ? 186 : 273;
-    const chromeMm = 14 + Math.max(1, weeks.length) * 7;
-    const rowMm = (sheetMm - chromeMm) / Math.max(1, printRows);
+    const sheetMm = landscape ? 186 : 273;
+    const chromeMm = 14 + Math.max(1, sheetWeeks.length) * 7;
+    const rowMm = (sheetMm - chromeMm) / Math.max(1, rows);
     // Et millimeter er ca. 3.78 px, og en rad trenger drøyt to tekstlinjer.
-    return Math.max(5, Math.min(11, rowMm * 3.78 * 0.42));
-  }, [printLandscape, weeks.length, printRows]);
+    const font = Math.max(5, Math.min(11, rowMm * 3.78 * 0.42));
+
+    const first = sheetWeeks[0] ? isoWeek(sheetWeeks[0].monday) : 0;
+    const last = sheetWeeks.length ? isoWeek(sheetWeeks[sheetWeeks.length - 1].monday) : 0;
+    const span = first ? (first === last ? `uke ${first}` : `uke ${first}–${last}`) : "";
+
+    return { slots, weeks: sheetWeeks, landscape, font, span };
+  }, [plan]);
 
   const clashes = useMemo(() => clashingSlots(plan?.slots ?? []), [plan]);
   const unplaced = useMemo(
@@ -921,7 +933,7 @@ export default function MeetingPlanner() {
                 type="button"
                 onClick={dropFree}
                 disabled={totalSlots === usedSlots}
-                title="Fjern tidene ingen skal ha, så oversikten blir kort nok til å henge opp"
+                title="Fjern tidene ingen skal ha, så oppsettet blir kortere. Utskriften tar uansett bare med tidene som gjelder noen."
                 className={secondaryButton("sm")}
               >
                 Fjern ledige tider
@@ -1128,13 +1140,13 @@ export default function MeetingPlanner() {
               venstre hjørne og to tredeler blankt ark under. Tre dager står
               bedre stående; fire og fem trenger bredden. */}
           <style media="print">{`@page { size: A4 ${
-            printLandscape ? "landscape" : "portrait"
+            sheet.landscape ? "landscape" : "portrait"
           }; margin: 12mm; }`}</style>
 
           <div
             data-print-sheet
             className="hidden print:flex print:flex-col"
-            style={{ fontSize: `${sheetFont}px` }}
+            style={{ fontSize: `${sheet.font}px` }}
           >
             <header className="mb-[0.4em] border-b-2 border-foreground pb-[0.3em] text-center">
               <p className="text-[1.7em] font-bold leading-tight">
@@ -1143,11 +1155,11 @@ export default function MeetingPlanner() {
               <p className="mt-[0.15em] text-[1em] leading-tight text-muted">
                 {plan.teacher.trim() ? `${plan.teacher} · ` : ""}
                 {plural(plan.minutes, "minutt", "minutter")} per samtale
-                {weekSpan ? ` · ${weekSpan}` : ""}
+                {sheet.span ? ` · ${sheet.span}` : ""}
               </p>
             </header>
 
-            {weeks.map(({ monday, dates }) => (
+            {sheet.weeks.map(({ monday, dates }) => (
               // `flex-1` er det som fyller arket: ukene deler sidehøyden
               // mellom seg, dagskortene deler uka, og radene deler kortet.
               // Ingen av dem krever en egen høyde — hadde de gjort det, ville
@@ -1190,10 +1202,10 @@ export default function MeetingPlanner() {
                           // Ingen minstehøyde i millimeter: radene skal dele
                           // den høyden arket har, ikke kreve en egen. Et gulv
                           // her var det som skjøv en travel dag over på side to.
-                          gridTemplateRows: `repeat(${rowsIn(plan.slots, dates)}, minmax(0, 1fr))`,
+                          gridTemplateRows: `repeat(${rowsIn(sheet.slots, dates)}, minmax(0, 1fr))`,
                         }}
                       >
-                        {slotsForDate(plan.slots, date).map((slot) => {
+                        {slotsForDate(sheet.slots, date).map((slot) => {
                           const student = slot.student_id ? byId.get(slot.student_id) : undefined;
                           const navn = student?.name ?? (slot.student_id ? UNKNOWN : "");
                           const note = slot.note.trim();
@@ -1239,7 +1251,7 @@ export default function MeetingPlanner() {
                         {Array.from({
                           length: Math.max(
                             0,
-                            rowsIn(plan.slots, dates) - slotsForDate(plan.slots, date).length
+                            rowsIn(sheet.slots, dates) - slotsForDate(sheet.slots, date).length
                           ),
                         }).map((_, i) => (
                           <li key={`tom-${i}`} className="border-b border-border" />

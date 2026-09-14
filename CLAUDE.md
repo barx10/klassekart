@@ -333,6 +333,21 @@ fra, og et oppsett kan gå over flere uker.
 Samtalearket følger læreren gjennom uka: det henges opp, tas med i samtalen, og
 det skrives på det. Derfor er det et skjema med ruter, ikke en liste.
 
+**Bare tidene som gjelder noen kommer med.** De ledige tidene er nyttige i appen
+— de er reserven når en familie må bytte dag — men på papiret er de støy: læreren
+henger opp arket for at elevene skal finne tida si, og tjue rader som sier «ledig»
+gjør den vanskeligere å finne. `sheet.slots` filtrerer dem bort, og dagene og
+ukene arket viser er utledet av det som blir igjen, så en dag ingen skal ha
+mister spalta si.
+
+Å slette dem automatisk når siste elev har fått tid — det nærliggende
+alternativet — ville tatt fra læreren nettopp den reserven, midt i uka der den
+trengs mest. «Fjern ledige tider» finnes fortsatt som en knapp, men den rydder
+oppsettet, ikke arket.
+
+Er ingen fordelt ennå, står alle tidene der: det er den *tomme* uka læreren vil
+ha på papir, og et blankt ark hadde vært svaret ellers.
+
 **Alt skal på én side.** En samtaleoversikt som fortsetter på side to er ingen
 oversikt — læreren skal se hele runden på én gang, og ark nummer to blir liggende
 igjen på kopirommet. Det er skriftstørrelsen som gir etter når samtalene blir
@@ -354,10 +369,15 @@ mange, ikke sidetallet:
 
 Ellers:
 
-- **Retningen følger bredeste uke** (`printLandscape`). Klassekartet skrives
+- **Alt arket trenger ligger samlet i `sheet`** — tidene, ukene, retningen,
+  skriftstørrelsen og ukespennet. Skjermens egne `weeks` og `weekSpan` teller
+  *alle* tidene, og de to skal ikke blandes.
+- **Retningen følger bredeste uke** (`sheet.landscape`). Klassekartet skrives
   alltid liggende, men en samtaleuke på to eller tre dager fikk da tre smale
   spalter oppe i venstre hjørne og to tredeler blankt ark under. Fire og fem
-  spalter trenger bredden; færre står bedre stående. Samtalesida overstyrer
+  spalter trenger bredden; færre står bedre stående. Den regnes av dagene som
+  faktisk kommer med, så en uke der bare to dager har samtaler blir stående.
+  Samtalesida overstyrer
   `@page` med en egen `<style media="print">`, som forsvinner med komponenten når
   læreren går videre til klasserommet.
 - **Uka er ett rutenett, ikke fem lister.** Alle dagene får like mange, like høye
