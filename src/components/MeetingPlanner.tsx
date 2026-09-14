@@ -98,6 +98,14 @@ function placedLabel(slot: MeetingSlot): string {
   return `${date.getDate()}.${date.getMonth() + 1}. ${slot.start}`;
 }
 
+/**
+ * Flest tider på én dag i uka — radtallet hele uka tegnes med på arket, så
+ * dagene står i høyde med hverandre uansett hvor ujevnt samtalene falt.
+ */
+function rowsIn(slots: MeetingSlot[], dates: string[]): number {
+  return Math.max(1, ...dates.map((d) => slotsForDate(slots, d).length));
+}
+
 function SlotCount({ used, total }: { used: number; total: number }) {
   return (
     <span className="shrink-0 text-[11px] tabular-nums text-subtle">
@@ -221,6 +229,14 @@ export default function MeetingPlanner() {
 
   /** Skjemaet peker på en annen uke enn den tidene ligger i. */
   const outOfSync = plan !== null && slotMonday !== "" && slotMonday !== plan.week_start;
+
+  /**
+   * Arket legges liggende først når uka er bred nok til å trenge det. Fire og
+   * fem dagsspalter får ikke plass på stående A4 uten at navnene brekker; to og
+   * tre gjør det med god margin, og stående gir dem den høyden som ellers ble
+   * stående blank under.
+   */
+  const printLandscape = weeks.some((w) => w.dates.length >= 4);
 
   const clashes = useMemo(() => clashingSlots(plan?.slots ?? []), [plan]);
   const unplaced = useMemo(
@@ -1068,56 +1084,139 @@ export default function MeetingPlanner() {
           {/* --- Arket. Egen blokk, ikke redigeringen med feltene skrudd av:
               på papiret er det tida og navnet som er hele poenget, og en side
               full av nedtrekkslister og «fjern»-kryss er ikke til å lese. --- */}
-          <div data-print-area className="hidden print:block">
-            <div className="mb-4 text-center">
-              <p className="text-xl font-bold">
+
+          {/* Papirretningen følger bredeste uke. Klassekartet skrives alltid
+              liggende — et klasserom er bredere enn det er dypt — men en
+              samtaleuke med to eller tre dager fikk da tre smale spalter oppe i
+              venstre hjørne og to tredeler blankt ark under. Tre dager står
+              bedre stående; fire og fem trenger bredden. */}
+          <style media="print">{`@page { size: A4 ${
+            printLandscape ? "landscape" : "portrait"
+          }; margin: 12mm; }`}</style>
+
+          <div data-print-sheet className="hidden print:flex print:flex-col">
+            <header className="mb-2 border-b-2 border-foreground pb-1.5 text-center">
+              <p className="text-lg font-bold leading-tight">
                 {plan.name || kindLabel(plan.kind)} – {activeClass?.name}
               </p>
-              <p className="mt-0.5 text-sm text-muted">
+              <p className="mt-0.5 text-[11px] text-muted">
                 {plan.teacher.trim() ? `${plan.teacher} · ` : ""}
                 {plural(plan.minutes, "minutt", "minutter")} per samtale
+                {weekSpan ? ` · ${weekSpan}` : ""}
               </p>
-            </div>
+            </header>
 
             {weeks.map(({ monday, dates }) => (
-              <div key={monday} className="mb-4">
+              // `flex-1` er det som fyller arket: dagskortene og radene i dem
+              // strekkes til høyden er brukt opp, i stedet for å klumpe seg
+              // øverst med en halv blank side under. Er det flere rader enn det
+              // er plass til, tar `min-h` over og uka går videre på neste side.
+              <section key={monday} className="mb-3 flex flex-1 flex-col last:mb-0">
                 {/* Ukenummeret står på arket også: to onsdager ser like ut, og
                     det er den forskjellen foresatte må kunne lese. */}
-                <p className="mb-1 text-[13px] font-semibold">
+                <p className="mb-1 text-[11px] font-semibold">
                   {weekLabel(monday)} <span className="font-normal">· {rangeLabel(dates)}</span>
                 </p>
                 <div
-                  className="grid gap-3"
+                  className="grid flex-1 gap-2"
                   style={{
                     gridTemplateColumns: `repeat(${Math.max(1, dates.length)}, minmax(0, 1fr))`,
                   }}
                 >
                   {dates.map((date) => (
-                    <div key={date} className="break-inside-avoid">
-                      <h2 className="mb-1 border-b border-border pb-0.5 text-[13px] font-semibold">
+                    // Ingen `break-inside-avoid` her. En dag med flere
+                    // samtaler enn det er plass til på arket ble da dyttet i
+                    // sin helhet til neste side, og etterlot side én tom — for
+                    // så ikke å få plass der heller. Det er den enkelte raden
+                    // som ikke skal deles, og den holder `li` på.
+                    <div
+                      key={date}
+                      className="flex flex-col rounded border border-border-strong"
+                    >
+                      <h2 className="border-b border-border-strong bg-background px-1.5 py-1 text-[11px] font-semibold">
                         {dayLabel(date)}
                       </h2>
-                      <ul className="flex flex-col">
+                      {/* Alle dagene i uka får like mange, like høye rader —
+                          styrt av den travleste. Lot vi radene bare dele
+                          høyden i sin egen spalte, fikk tirsdag med to
+                          samtaler to ruter på en halv side hver, ved siden av
+                          fredag med åtte normale. Nå ligger uka som ett
+                          rutenett, og den rolige dagen har bare tomme ruter
+                          nederst. */}
+                      <ul
+                        className="grid flex-1 [&>li:last-child]:border-b-0"
+                        style={{
+                          gridTemplateRows: `repeat(${rowsIn(plan.slots, dates)}, minmax(9mm, 1fr))`,
+                        }}
+                      >
                         {slotsForDate(plan.slots, date).map((slot) => {
                           const student = slot.student_id ? byId.get(slot.student_id) : undefined;
+                          const navn = student?.name ?? (slot.student_id ? UNKNOWN : "");
+                          const note = slot.note.trim();
                           return (
+                            // Radene deler høyden mellom seg, og tomrommet som
+                            // blir til overs er skriveplass: arket følger
+                            // læreren gjennom uka, og det skal gå an å notere
+                            // «kom ikke» eller «ringer tilbake» ved siden av
+                            // navnet uten å lete etter en ledig flekk.
                             <li
                               key={slot.id}
-                              className="flex gap-2 border-b border-border py-1 text-[12px]"
+                              className="flex min-w-0 break-inside-avoid flex-col gap-px overflow-hidden border-b border-border px-1.5 py-1"
                             >
-                              <span className="shrink-0 tabular-nums">{slot.start}</span>
-                              <span className="min-w-0 flex-1 truncate">
-                                {student?.name ?? (slot.student_id ? UNKNOWN : slot.note)}
+                              <span className="flex items-baseline gap-1.5 text-[11px] leading-tight">
+                                <span className="shrink-0 tabular-nums">
+                                  {slot.start}–{slotEnd(slot)}
+                                </span>
+                                {/* Uten navn *og* uten merknad er tida ledig.
+                                    Tom rad så det ut som noe var glemt. */}
+                                <span
+                                  className={`min-w-0 flex-1 truncate ${
+                                    navn || note ? "font-medium" : "text-subtle"
+                                  }`}
+                                >
+                                  {navn || note || "ledig"}
+                                </span>
                               </span>
+                              {/* Merknaden på en tid som *også* har en elev —
+                                  «på Teams», «tolk» — sto ikke på arket før. */}
+                              {navn && note && (
+                                <span className="truncate text-[9px] leading-tight text-muted">
+                                  {note}
+                                </span>
+                              )}
                             </li>
                           );
                         })}
+                        {/* Linjene føres helt ned. Stoppet de ved siste
+                            samtale, hang den nederste raden åpen ned i
+                            tomrommet og så ut som en time som varte til
+                            arket sluttet — og en tid læreren vil føre på
+                            for hånd hadde ingen linje å stå på. */}
+                        {Array.from({
+                          length: Math.max(
+                            0,
+                            rowsIn(plan.slots, dates) - slotsForDate(plan.slots, date).length
+                          ),
+                        }).map((_, i) => (
+                          <li key={`tom-${i}`} className="border-b border-border" />
+                        ))}
                       </ul>
                     </div>
                   ))}
                 </div>
-              </div>
+              </section>
             ))}
+
+            {/* Hvem som ennå ikke har fått en tid hører hjemme på arket: det er
+                dem læreren må ringe, og lista sto bare på skjermen. */}
+            {unplaced.length > 0 && (
+              <p className="mt-2 border-t border-border pt-1 text-[10px] leading-snug text-muted">
+                <span className="font-semibold text-foreground">
+                  Uten tid ({unplaced.length}):
+                </span>{" "}
+                {unplaced.map((s) => s.name).join(", ")}
+              </p>
+            )}
           </div>
         </>
       )}

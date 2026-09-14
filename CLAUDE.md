@@ -326,8 +326,37 @@ fra, og et oppsett kan gå over flere uker.
   fra menya, og klassens egne oppsett gjelder.
 - **Arket er en egen blokk**, ikke redigeringen med feltene skrudd av. På papiret
   er det tida og navnet som er hele poenget, og en side full av nedtrekkslister
-  og «fjern»-kryss er ikke til å lese. Dagene ligger side om side under uka si, og
-  A4 liggende fra utskriftsreglene passer fem spalter.
+  og «fjern»-kryss er ikke til å lese. Dagene ligger side om side under uka si.
+
+#### Arket
+
+Samtalearket følger læreren gjennom uka: det henges opp, tas med i samtalen, og
+det skrives på det. Derfor er det et skjema med ruter, ikke en liste.
+
+- **Retningen følger bredeste uke** (`printLandscape`). Klassekartet skrives
+  alltid liggende, men en samtaleuke på to eller tre dager fikk da tre smale
+  spalter oppe i venstre hjørne og to tredeler blankt ark under. Fire og fem
+  spalter trenger bredden; færre står bedre stående. Samtalesida overstyrer
+  `@page` med en egen `<style media="print">`, som forsvinner med komponenten når
+  læreren går videre til klasserommet.
+- **Uka er ett rutenett, ikke fem lister.** Alle dagene får like mange, like høye
+  rader — `rowsIn()` teller den travleste. Lot vi hver dag dele høyden i sin egen
+  spalte, fikk tirsdag med to samtaler to ruter på en halv side hver, ved siden av
+  fredag med åtte normale. `[data-print-sheet]` har `min-height` i `vh` nettopp
+  for at `flex-1` skal ha en arkhøyde å fordele.
+- **Linjene føres helt ned**, med tomme rader under siste samtale. Stoppet de
+  der samtalene sluttet, hang den nederste ruten åpen ned i tomrommet og så ut
+  som en time som varte til arket sluttet. Tomrommet er dessuten skriveplassen:
+  «kom ikke», «ringer tilbake».
+- **Ingen `break-inside: avoid` på dagskortet.** En dag med flere samtaler enn det
+  er plass til ble da dyttet i sin helhet til neste side, etterlot side én tom, og
+  fikk ikke plass der heller. Det er den enkelte raden som ikke skal deles.
+- **Tida står som spenn** («10:00–10:20»), ikke bare starten: det er det de
+  foresatte skal vite. En ledig tid står som «ledig» og ikke som en tom rad, og
+  en merknad på en tid som *også* har en elev — «på Teams», «tolk» — får sin egen
+  linje under navnet.
+- **Elever uten tid står nederst på arket.** Det er dem læreren må ringe, og
+  lista sto bare på skjermen.
 - **Egen side og ikke et vindu.** Skjemaet er en uke bredt, og læreren blir
   sittende i det en stund av gangen.
 - **Feltene med hjelpetekst peker på feltet med `htmlFor`.** En `<label>` som

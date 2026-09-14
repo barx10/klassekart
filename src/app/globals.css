@@ -238,8 +238,19 @@ body {
     padding: 0 !important;
   }
 
+  /* Samtalearket fyller høyden i stedet for å klumpe seg øverst. Uke- og
+     dagsblokkene er flex med `flex-1`, men de strekker seg bare hvis noe over
+     dem har en høyde å fordele — derfor settes den her, på arket selv.
+     `100vh` er arkhøyden innenfor margene i utskrift; det som trekkes fra er
+     bunnteksten under arket. Samtalesida velger selv retning på `@page`. */
+  [data-print-sheet] {
+    min-height: calc(100vh - 16mm);
+  }
+
   /* Liggende ark: et klasserom er bredere enn det er dypt, og stående A4 ga et
-     kart som enten ble knøttlite eller klippet ved høyre marg. */
+     kart som enten ble knøttlite eller klippet ved høyre marg. Samtalesida
+     overstyrer retningen med sin egen `@page`-regel — en samtaleuke på to
+     dager hører hjemme stående. */
   @page {
     size: A4 landscape;
     margin: 10mm;
