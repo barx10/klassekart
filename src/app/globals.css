@@ -245,9 +245,9 @@ body {
      dem kunne siste pikselrad tippe over på en tom side to.
 
      Hele poenget er at læreren skal se uka på én gang. Teksten skaleres etter
-     hvor mange rader arket må vise (`sheetFont` i MeetingPlanner), så det er
-     skriftstørrelsen og ikke sidetallet som gir etter. Samtalesida velger selv
-     retning på `@page`. */
+     hvor mange linjer arket må vise (`sheet.font` i MeetingPlanner), så det er
+     skriftstørrelsen og ikke sidetallet som gir etter. Liggende A4 nedenfor er
+     riktig format også her: en uke er fem dager bred. */
   [data-print-sheet] {
     height: calc(100vh - 2mm);
   }
@@ -259,9 +259,8 @@ body {
   }
 
   /* Liggende ark: et klasserom er bredere enn det er dypt, og stående A4 ga et
-     kart som enten ble knøttlite eller klippet ved høyre marg. Samtalesida
-     overstyrer retningen med sin egen `@page`-regel — en samtaleuke på to
-     dager hører hjemme stående. */
+     kart som enten ble knøttlite eller klippet ved høyre marg. Samtalearket er
+     en uke på fem dager, og trenger den samme bredden. */
   @page {
     size: A4 landscape;
     margin: 10mm;
