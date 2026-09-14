@@ -270,7 +270,20 @@ fra, og et oppsett kan gå over flere uker.
   i uka etter får sin egen spalte.
 - **Å skyve hele runden er en egen knapp** (`shiftWeeks`), som flytter både
   skjemaet og hver enkelt dato. Det var det læreren egentlig ville da hen endret
-  uka; nå er det synlig, og ikke en bieffekt av et datofelt.
+  uka; nå er det synlig, og ikke en bieffekt av et datofelt. Knappene står ved
+  tidene de flytter, ikke blant skjemafeltene: der sto to knapper som het «uke»
+  rett ved to felt som også het «uke», og bare én av dem flyttet noe.
+- **Spriket mellom skjemaet og tidene må stå skrevet** (`outOfSync`). At uka i
+  skjemaet ikke flytter tidene er riktig, men usynlig: læreren klikket «uka
+  etter», fikk «Uke 40» over en oversikt som fortsatt sto i uke 39, og trodde
+  feltet var i stykker. Nå settes de to ukene opp mot hverandre i en linje med
+  begge utveiene som knapper — flytt tidene hit, eller sett skjemaet tilbake.
+  Flytteknappene over tidene viker for den linja, for to meldinger om uke 39
+  etter hverandre hjelper ingen.
+- **`refill` faller tilbake på ukedagen når datoen er borte.** Det er nettopp
+  tilfellet ved et ukebytte: familien som skulle tirsdag skal ha tirsdag, bare
+  uka etter. Uten den reserven falt hele klassen ned i den vanlige fordelingen,
+  og løftet om at dagen står i ro holdt bare så lenge datoen gjorde det.
 - **Ukenummeret står over spaltene og på arket** (`isoWeek`, ISO 8601 som i
   norske kalendere). To onsdager ser like ut, og det er nettopp den forskjellen
   læreren og de foresatte må kunne lese.

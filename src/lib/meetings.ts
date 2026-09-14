@@ -226,6 +226,17 @@ export function rangeLabel(dates: string[]): string {
     : `${full(first)} – ${full(last)}`;
 }
 
+/**
+ * Hele dager fra `from` til `to`, negativt om `to` er før. 0 om noe ikke er en
+ * dato. Avrundes, fordi et døgn over en sommertidsovergang ikke er 24 timer.
+ */
+export function daysBetween(from: string, to: string): number {
+  const a = toDate(from);
+  const b = toDate(to);
+  if (!a || !b) return 0;
+  return Math.round((b.getTime() - a.getTime()) / 86_400_000);
+}
+
 /** Neste hverdag etter datoen: fredag gir mandagen etter. */
 export function nextWeekday(value: string): string {
   let next = addDays(value, 1);
@@ -368,12 +379,23 @@ export function fillSlots(slots: MeetingSlot[], studentIds: string[]): MeetingSl
  * Brukes når tidene lages på nytt etter at lengden eller arbeidsdagen er
  * endret. Uten dagen som feste ville en endring fra 20 til 30 minutter flyttet
  * halve klassen til en annen dag — og dagen er det første de foresatte har
- * skrevet ned. Finnes ikke dagen lenger, eller er det færre tider på den enn
- * det sto elever der, faller de siste ned i den vanlige fordelingen.
+ * skrevet ned.
+ *
+ * Finnes ikke datoen i de nye tidene, brukes **samme ukedag**. Det er tilfellet
+ * når læreren flytter skjemaet en uke fram og lager tidene på nytt: familien som
+ * skulle tirsdag skal fortsatt ha tirsdag, bare uka etter. Uten ukedagen som
+ * reserve falt hele klassen ned i den vanlige fordelingen, og da stemte ikke
+ * lenger løftet om at dagen står i ro. Er det heller ingen slik ukedag — eller
+ * færre tider på den enn det sto elever der — går de siste den vanlige veien.
  */
 export function refill(fresh: MeetingSlot[], previous: MeetingSlot[]): MeetingSlot[] {
   const placed = new Map<string, string>();
   const spill: string[] = [];
+  // To gamle datoer kan peke på samme nye dag — to uker som blir til én — så
+  // tidene som er tatt må holdes utenfor neste runde.
+  const taken = new Set<string>();
+
+  const freshDates = datesOf(fresh);
 
   for (const date of datesOf(previous)) {
     const students = slotsForDate(previous, date)
@@ -381,11 +403,21 @@ export function refill(fresh: MeetingSlot[], previous: MeetingSlot[]): MeetingSl
       .filter((id): id is string => Boolean(id));
     if (students.length === 0) continue;
 
-    const open = slotsForDate(fresh, date).filter((s) => !s.student_id && !s.note.trim());
+    const target = freshDates.includes(date)
+      ? date
+      : freshDates.find((d) => weekdayOf(d) === weekdayOf(date));
+
+    const open = target
+      ? slotsForDate(fresh, target).filter(
+          (s) => !s.student_id && !s.note.trim() && !taken.has(s.id)
+        )
+      : [];
     students.forEach((id, i) => {
       const slot = open[i];
-      if (slot) placed.set(slot.id, id);
-      else spill.push(id);
+      if (slot) {
+        placed.set(slot.id, id);
+        taken.add(slot.id);
+      } else spill.push(id);
     });
   }
 
