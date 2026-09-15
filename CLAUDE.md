@@ -45,7 +45,8 @@ src/
     layout.tsx                  App-skall: AppDataProvider + Sidebar
     page.tsx                    Sender videre til første klasse
     klasser/[classId]/page.tsx  Verktøylinje + klasserommet (tynn side)
-    klasser/[classId]/samtaler/ Elev- og utviklingssamtaler i en arbeidsuke
+    klasser/[classId]/samtaler/ Samtalene: planlegging (page) og forslag til
+                                spørsmål (sporsmal), med fanene i layout
     personvern/page.tsx         Personvernsiden læreren kan vise fram
   components/
     Sidebar.tsx                 Klasser, elever, tidligere kart, par-oversikt
@@ -54,6 +55,7 @@ src/
     ClassroomView.tsx           Klassekartet i fullskjerm, til projektoren
     StudentGroups.tsx           Grupper til prosjektarbeid
     MeetingPlanner.tsx          Samtaleuka: skjema, tider og hvem som får dem
+    MeetingQuestions.tsx        Forslag til spørsmål i de to samtaletypene
     StudentManager.tsx          Legg til/rediger elever (kompakt, for menyen)
     PairHeatmap.tsx             Varmekart over hvem som har sittet sammen
     ContactTeachers.tsx         Kontaktlærerne, og elevene hver av dem har
@@ -65,6 +67,7 @@ src/
     seating.ts                  Fordelingsalgoritmen (simulert herding) + regler,
                                 og gruppestørrelsene grupperingen bruker
     meetings.ts                 Samtaletider: klokkeslett, uka, fordelingen
+    meeting-questions.ts        Spørsmålene selv — faste, ikke lagrede data
     api.ts                      Datalaget: klasser, elever, kart, par
     local-db.ts                 Lagring i nettleseren (IndexedDB) + sikkerhetskopi
     backup-file.ts              Får sikkerhetskopien ned på maskinen
@@ -405,6 +408,36 @@ Tider som ligger oppå hverandre (`clashingSlots`) får rød ramme og et varsel.
 Skjemaet lager dem aldri selv, men en tid som er flyttet for hånd kan havne midt
 i den neste — og to samtaler klokka 15.00 må læreren få vite om før arket henges
 opp.
+
+#### Forslag til spørsmål
+
+Samtalesida har to underfaner, og de er **ekte ruter**: planlegginga på
+`/samtaler`, spørsmålene på `/samtaler/sporsmal`. Overskrifta, fanene og
+feilmeldinga ligger i `layout.tsx` over dem begge. En bryter i en komponent
+ville enten latt `MeetingPlanner` tegne i det skjulte — og da ville
+`main:has([data-print-sheet])` slått inn på spørsmålsutskriften også, for `:has`
+bryr seg ikke om `display` — eller mistet hvilket oppsett som var åpent hver
+gang læreren tok en titt på spørsmålene. Med hver sin adresse kan spørsmålene
+dessuten bokmerkes og åpnes rett før samtalen.
+
+- **Spørsmålene er faste data i programmet** (`meeting-questions.ts`), ikke noe
+  læreren redigerer. Skulle de kunne endres, måtte de vært med i
+  sikkerhetskopien, i formatversjonen og i importen — for en huskeliste ingen
+  har bedt om å kunne skrive om.
+- **Ingen avkryssing og ingen notatfelt.** Det læreren skriver ned i en samtale
+  er opplysninger om et barn, og hele poenget med denne appen er at slike
+  opplysninger ikke ligger her. De hører hjemme i skolens eget system.
+- **De to typene har ulike spørsmål fordi de har ulike deltakere.**
+  Elevsamtalen er eleven og kontaktlæreren to og to, og spørsmålene går rett til
+  eleven. I utviklingssamtalen sitter de foresatte ved samme bord, og da handler
+  flere av spørsmålene om hva hjemmet ser, og om hvem som gjør hva etterpå.
+- **Typen velges på fanen og utledes ikke av oppsettet.** Bare startpunktet
+  arves fra det nyeste oppsettet i klassen: læreren kan være i gang med å sette
+  opp utviklingssamtaler og likevel ville lese elevsamtalespørsmålene.
+- **To spalter på papiret** (`print:columns-2`). Arket er liggende A4 — det er
+  klassekartet og samtalearket som krever det formatet — og én spalte tvers over
+  en slik side gir linjer ingen finner tilbake til. Med to spalter får begge
+  settene plass på én side.
 
 ### Fullskjermvisningen
 

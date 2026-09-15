@@ -451,15 +451,17 @@ export default function Sidebar({ open, hidden, onClose, onHide, onAbout }: Prop
             )}
 
             {/* Samtalene er en egen side og ikke et vindu: skjemaet er en uke
-                bredt, og læreren blir sittende i det en stund av gangen. */}
+                bredt, og læreren blir sittende i det en stund av gangen.
+                `startsWith`, for samtalene har underfaner: står læreren på
+                spørsmålslista, skal menyen fortsatt peke på Samtaler. */}
             <Link
               href={`/klasser/${activeClass.id}/samtaler`}
               onClick={onClose}
               aria-current={
-                pathname === `/klasser/${activeClass.id}/samtaler` ? "page" : undefined
+                pathname.startsWith(`/klasser/${activeClass.id}/samtaler`) ? "page" : undefined
               }
               className={`mt-1 flex w-full items-center gap-1.5 rounded-md px-2 py-2 text-left text-sm font-medium ${
-                pathname === `/klasser/${activeClass.id}/samtaler`
+                pathname.startsWith(`/klasser/${activeClass.id}/samtaler`)
                   ? "bg-accent-soft text-accent-text"
                   : "hover:bg-background"
               }`}
