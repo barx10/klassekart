@@ -300,6 +300,14 @@ fra, og et oppsett kan gå over flere uker.
   valgte ukedagene i så mange uker fra mandagen — resten av appen leser dagene ut
   av tidene selv (`datesOf`, `weeksOf`), så en dag læreren har lagt til for hånd
   i uka etter får sin egen spalte.
+- **Tider legges til, de erstatter ikke.** «Legg til tider i uke 40» bygger uka
+  skjemaet står på og legger den til dem som alt står der; «Lag alle tidene på
+  nytt» bygger hele oppsettet fra skjemaet, og er den som ber om bekreftelse.
+  Før fantes bare den siste, og da var det umulig å ha to uker i gang samtidig:
+  en lærer som satte opp noen familier i uke 39 og bladde til uke 40 mistet uke
+  39 og fikk navnene med seg over. `addSlots` hopper over tider som ville lagt
+  seg oppå en som står der, så to trykk ikke gir dobbelt sett — og gir lista
+  uendret tilbake når det ikke er noe å legge til, så knappen kan slås av.
 - **Å skyve hele runden er en egen knapp** (`shiftWeeks`), som flytter både
   skjemaet og hver enkelt dato. Det var det læreren egentlig ville da hen endret
   uka; nå er det synlig, og ikke en bieffekt av et datofelt. Knappene står ved
@@ -309,9 +317,11 @@ fra, og et oppsett kan gå over flere uker.
   skjemaet ikke flytter tidene er riktig, men usynlig: læreren klikket «uka
   etter», fikk «Uke 40» over en oversikt som fortsatt sto i uke 39, og trodde
   feltet var i stykker. Nå settes de to ukene opp mot hverandre i en linje med
-  begge utveiene som knapper — flytt tidene hit, eller sett skjemaet tilbake.
+  utveiene i: legg til uka, flytt tidene hit, eller sett skjemaet tilbake.
   Flytteknappene over tidene viker for den linja, for to meldinger om uke 39
-  etter hverandre hjelper ingen.
+  etter hverandre hjelper ingen. Vilkåret er at skjemaet peker på en uke **uten
+  tider** — ikke at første tid ligger i en annen uke enn skjemaet. En runde over
+  uke 39 og 40 skal kunne ha skjemaet stående i uke 40 uten at appen maser.
 - **`refill` faller tilbake på ukedagen når datoen er borte.** Det er nettopp
   tilfellet ved et ukebytte: familien som skulle tirsdag skal ha tirsdag, bare
   uka etter. Uten den reserven falt hele klassen ned i den vanlige fordelingen,

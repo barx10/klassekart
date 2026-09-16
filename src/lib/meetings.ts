@@ -191,6 +191,18 @@ export function weekLabel(value: string): string {
   return week ? `Uke ${week}` : "";
 }
 
+/**
+ * «uke 40» eller «uke 40–41» — ukespennet mellom to mandager, til statuslinja
+ * og til knappene som må si hvilken uke de gjelder. Liten forbokstav: det står
+ * midt i en setning, ikke som overskrift slik `weekLabel` gjør.
+ */
+export function spanLabel(from: string, to: string): string {
+  const first = isoWeek(from);
+  if (!first) return "";
+  const last = isoWeek(to) || first;
+  return first === last ? `uke ${first}` : `uke ${first}–${last}`;
+}
+
 /** «Mandag 15. sep.» — dagen slik den står over spalta og på arket. */
 export function dayLabel(value: string): string {
   const date = toDate(value);
@@ -336,6 +348,45 @@ export function buildSlots(plan: MeetingPlan): MeetingSlot[] {
     }
   }
   return built;
+}
+
+/**
+ * To tider samme dag som dekker noe av det samme klokkeslettet.
+ *
+ * Brukes av `addSlots` til å la være å legge en ny tid oppå en som alt står
+ * der. `clashingSlots` finner de samme overlappene i ettertid, men den ser på
+ * naboene i en sortert dag — her må hver ny tid holdes opp mot alle de gamle,
+ * og det er ingen sortert liste ennå.
+ */
+function overlaps(a: MeetingSlot, b: MeetingSlot): boolean {
+  if (a.date !== b.date) return false;
+  const aStart = toMinutes(a.start);
+  const bStart = toMinutes(b.start);
+  return aStart < bStart + b.minutes && bStart < aStart + a.minutes;
+}
+
+/**
+ * Legger tidene skjemaet lager **til** dem som alt står der, uten å røre en
+ * eneste av de gamle.
+ *
+ * Dette er veien til en samtale lenger fram i tid. En lærer setter opp noen
+ * familier i uke 39 og noen i uke 40, og før fantes det bare `buildSlots` med
+ * `refill`: den kastet hele uke 39 og tok navnene med seg til uke 40. Da var
+ * det umulig å ha to uker i gang samtidig — nettopp det en samtalerunde som
+ * strekker seg er.
+ *
+ * Tider som ville lagt seg oppå en som alt står der, hoppes over. Uten det ga
+ * to trykk på knappen dobbelt sett med tider, alle merket som kollisjon, og en
+ * tid læreren hadde flyttet for hånd fikk en ny tid tvers over seg.
+ *
+ * Er det ingenting å legge til, kommer den gamle lista tilbake uendret — da kan
+ * knappen slås av i stedet for å lagre et oppsett som er likt.
+ */
+export function addSlots(plan: MeetingPlan): MeetingSlot[] {
+  const extra = buildSlots(plan).filter(
+    (fresh) => !plan.slots.some((old) => overlaps(old, fresh))
+  );
+  return extra.length === 0 ? plan.slots : sortSlots([...plan.slots, ...extra]);
 }
 
 /**
