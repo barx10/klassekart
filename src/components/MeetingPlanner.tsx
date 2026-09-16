@@ -13,6 +13,7 @@ import {
   MIN_MINUTES,
   WEEKDAYS,
   addDays,
+  addSlots,
   buildSlots,
   clashingSlots,
   datesOf,
@@ -20,7 +21,6 @@ import {
   daysBetween,
   defaultMinutes,
   fillSlots,
-  isoWeek,
   kindLabel,
   mondayOf,
   newSlotId,
@@ -29,6 +29,7 @@ import {
   refill,
   slotEnd,
   slotsForDate,
+  spanLabel,
   toClock,
   toDate,
   toMinutes,
@@ -62,6 +63,14 @@ import type { MeetingKind, MeetingPlan, MeetingSlot } from "@/lib/types";
  * flyttet et klikk på uka eleven som var avtalt onsdag 16. september til
  * onsdagen etter. Skal hele runden skyves, er det en egen knapp som gjør det —
  * synlig, og ikke som en bieffekt av et datofelt.
+ *
+ * **Tider legges til, de erstatter ikke.** «Legg til tider» bygger uka skjemaet
+ * står på og legger den til dem som alt står der; «Lag alle tidene på nytt»
+ * bygger hele oppsettet fra skjemaet og er den som ber om bekreftelse. Før
+ * fantes bare den siste, og da var det umulig å ha to uker i gang samtidig: en
+ * lærer som satte opp noen familier i uke 39 og så bladde til uke 40 mistet
+ * uke 39 og fikk navnene med seg over. En samtalerunde strekker seg, og en
+ * enkelt familie kan måtte settes opp et godt stykke fram i tid.
  *
  * **Men da må spriket være synlig.** Uka i skjemaet og uka tidene ligger i er to
  * ulike ting, og et klikk på «uka etter» i skjemaet så ut som at det ikke virket:
@@ -229,15 +238,39 @@ export default function MeetingPlanner() {
    * peke hver sin vei — og det er nettopp det som må stå skrevet et sted.
    */
   const slotMonday = weeks[0]?.monday ?? "";
-  const weekSpan = useMemo(() => {
-    if (weeks.length === 0) return "";
-    const first = isoWeek(weeks[0].monday);
-    const last = isoWeek(weeks[weeks.length - 1].monday);
-    return first === last ? `uke ${first}` : `uke ${first}–${last}`;
-  }, [weeks]);
+  const weekSpan = useMemo(
+    () => (weeks.length === 0 ? "" : spanLabel(weeks[0].monday, weeks[weeks.length - 1].monday)),
+    [weeks]
+  );
 
-  /** Skjemaet peker på en annen uke enn den tidene ligger i. */
-  const outOfSync = plan !== null && slotMonday !== "" && slotMonday !== plan.week_start;
+  /**
+   * Ukene skjemaet ville lagt til nå, til knappen som gjør det. Knappen må si
+   * hvilken uke den gjelder: «Legg til tider» ved siden av et uke-felt læreren
+   * nettopp endret sier ikke om den følger feltet eller tidene under.
+   */
+  const planSpan = plan
+    ? spanLabel(plan.week_start, addDays(plan.week_start, (plan.weeks - 1) * 7))
+    : "";
+
+  /**
+   * Tidene skjemaet ville lagt til. Regnes ut på forhånd for at knappen skal
+   * kunne si hvor mange det blir — og slå seg av når skjemaet bare ville lagd
+   * tider som alt står der.
+   */
+  const pending = useMemo(() => (plan ? addSlots(plan) : []), [plan]);
+  const pendingCount = pending.length - (plan?.slots.length ?? 0);
+
+  /**
+   * Skjemaet peker på en uke det ikke er laget tider i ennå.
+   *
+   * Det er *ikke* det samme som at skjemaet står i en annen uke enn den første
+   * tida: en runde som går over uke 39 og 40 skal kunne ha skjemaet stående i
+   * uke 40 uten at appen maser. Det er bare uka uten tider som er verdt en
+   * linje — der har læreren enten glemt å legge dem til, eller endret feltet
+   * uten å mene det.
+   */
+  const outOfSync =
+    plan !== null && weeks.length > 0 && !weeks.some((w) => w.monday === plan.week_start);
 
   /**
    * Arket: alt som skiller papiret fra skjermen, regnet ut ett sted.
@@ -281,9 +314,9 @@ export default function MeetingPlanner() {
     // Et millimeter er ca. 3.78 px, og en linje trenger drøyt sin egen høyde.
     const font = Math.max(5, Math.min(11, (rowMm * 3.78) / 1.45));
 
-    const first = weeks[0] ? isoWeek(weeks[0].monday) : 0;
-    const last = weeks.length ? isoWeek(weeks[weeks.length - 1].monday) : 0;
-    const span = first ? (first === last ? `uke ${first}` : `uke ${first}–${last}`) : "";
+    const span = weeks.length
+      ? spanLabel(weeks[0].monday, weeks[weeks.length - 1].monday)
+      : "";
 
     return { slots, weeks, font, span };
   }, [plan]);
@@ -356,6 +389,22 @@ export default function MeetingPlanner() {
     if (!plan) return;
     setConfirmRebuild(false);
     update({ ...plan, slots: refill(buildSlots(plan), plan.slots) });
+  }
+
+  /**
+   * Legger tidene skjemaet lager til dem som alt står der, og rører ingen av
+   * dem. Dette er veien til en samtale lenger fram: uke 39 blir stående med
+   * elevene sine, og uke 40 kommer i tillegg, tom. De som ikke har fått tid
+   * står nedenfor som før, og kan velges i en av de nye tidene.
+   *
+   * «Lag tidene» gjør det motsatte — bygger hele oppsettet på nytt fra skjemaet
+   * — og det er fortsatt riktig når lengden eller arbeidsdagen er endret. Men
+   * det var før den eneste veien, og da kastet et bytte av uke uke 39 og tok
+   * navnene med seg til uke 40.
+   */
+  function appendSlots() {
+    if (!plan || pendingCount === 0) return;
+    update({ ...plan, slots: pending });
   }
 
   function distribute() {
@@ -758,9 +807,10 @@ export default function MeetingPlanner() {
               title="Oppskrift på nye tider"
               hint={
                 <>
-                  Feltene her er bare en oppskrift: de bestemmer hva{" "}
-                  <strong className="text-muted">«Lag tidene»</strong> fyller uka med. De flytter
-                  ingen tid som alt står i oversikten under.
+                  Feltene her er bare en oppskrift: de bestemmer hvilke tider{" "}
+                  <strong className="text-muted">«Legg til tider»</strong> lager. De flytter ingen
+                  tid som alt står i oversikten under: setter du uka lenger fram, kommer den uka i
+                  tillegg, og elevene du alt har satt opp blir stående.
                 </>
               }
             >
@@ -770,9 +820,10 @@ export default function MeetingPlanner() {
                   <HelpTip label="Hva gjør uke-feltet?">
                     Uka sier hvor <strong className="text-foreground">nye</strong> tider lages, og
                     flytter ingen tid som alt står i oversikten — de har sin egen dato, og kan være
-                    avtalt med noen. Endrer du uka uten å lage tidene på nytt, sier appen fra og
-                    tilbyr deg å flytte dem. Treffer du en annen ukedag i kalenderen, starter
-                    oppsettet på mandagen i den uka.
+                    avtalt med noen. Skal du sette opp en samtale lenger fram, setter du uka hit og
+                    trykker <strong className="text-foreground">«Legg til tider»</strong>: uka
+                    kommer i tillegg, og elevene du alt har satt opp blir stående. Treffer du en
+                    annen ukedag i kalenderen, starter oppsettet på mandagen i den uka.
                   </HelpTip>
                 </span>
                 <div className="flex items-center gap-1">
@@ -910,13 +961,30 @@ export default function MeetingPlanner() {
             </FieldGroup>
 
             <div className="flex flex-wrap items-center gap-2 border-t border-border pt-3">
-              <button
-                type="button"
-                onClick={() => (totalSlots > 0 ? setConfirmRebuild(true) : rebuild())}
-                className={primaryButton("sm")}
-              >
-                Lag tidene
-              </button>
+              {/* To ulike handlinger, ikke én knapp med to utfall. Å legge til
+                  er det vanlige når det alt står tider der — en runde som
+                  strekker seg over to uker settes opp uke for uke — mens å
+                  bygge alt på nytt hører til når lengden eller arbeidsdagen er
+                  endret. Da må den siste be om bekreftelse, og den første ikke. */}
+              {totalSlots === 0 ? (
+                <button type="button" onClick={rebuild} className={primaryButton("sm")}>
+                  Lag tidene
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  onClick={appendSlots}
+                  disabled={pendingCount === 0}
+                  title={
+                    pendingCount === 0
+                      ? "Skjemaet gir ingen nye tider — de ligger der alt"
+                      : `Legg til ${plural(pendingCount, "tid", "tider")} uten å røre dem som står der`
+                  }
+                  className={primaryButton("sm")}
+                >
+                  + Legg til tider i {planSpan}
+                </button>
+              )}
               <button
                 type="button"
                 onClick={distribute}
@@ -939,6 +1007,17 @@ export default function MeetingPlanner() {
               >
                 Fjern ledige tider
               </button>
+
+              {totalSlots > 0 && (
+                <button
+                  type="button"
+                  onClick={() => setConfirmRebuild(true)}
+                  title="Bygg hele oppsettet på nytt fra skjemaet. Tider du har flyttet for hånd forsvinner."
+                  className={`${ghostButton("sm")} hover:text-danger`}
+                >
+                  Lag alle tidene på nytt
+                </button>
+              )}
 
               <button
                 type="button"
@@ -997,7 +1076,9 @@ export default function MeetingPlanner() {
               <span>
                 Skjemaet lager nye tider fra{" "}
                 <strong>{weekLabel(plan.week_start).toLowerCase()}</strong>, men tidene under ligger
-                i <strong>{weekSpan}</strong>.
+                i <strong>{weekSpan}</strong>. Skal runden strekke seg over begge, trykker du{" "}
+                <strong>«Legg til tider i {planSpan}»</strong> over — da kommer uka i tillegg, og
+                tidene under beholder elevene sine.
               </span>
               <span className="flex flex-wrap items-center gap-1.5">
                 <button
@@ -1237,6 +1318,11 @@ export default function MeetingPlanner() {
               og {plural(plan.weeks, "uke", "uker")} fram — og tider du har flyttet for hånd eller
               skrevet merknad på forsvinner. Elevene som står oppført beholder ukedagen sin: den som
               skulle tirsdag får tirsdag, også om tidene nå lages i en annen uke.
+              <br />
+              <br />
+              Skal du bare ha med en uke til, er det{" "}
+              <strong>«Legg til tider i {planSpan}»</strong> du er ute etter. Den lar tidene som
+              står være i fred.
             </>
           }
           confirmLabel="Lag tidene"
