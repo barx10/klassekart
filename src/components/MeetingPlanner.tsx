@@ -14,7 +14,6 @@ import {
   WEEKDAYS,
   addDays,
   addSlots,
-  buildSlots,
   clashingSlots,
   datesOf,
   dayLabel,
@@ -26,7 +25,8 @@ import {
   newSlotId,
   nextWeekday,
   rangeLabel,
-  refill,
+  rebuildSlots,
+  shiftSlots,
   slotEnd,
   slotsForDate,
   spanLabel,
@@ -384,11 +384,12 @@ export default function MeetingPlanner() {
    * Lager tidene på nytt fra skjemaet. Elevene som alt står oppført settes inn
    * igjen på dagen sin — endrer læreren lengden fra 20 til 30 minutter, er det
    * klokkeslettene som skal flytte seg, ikke hvilken dag familien skal møte.
+   * Samtalene som er holdt blir stående der de står; de er ikke en plan lenger.
    */
   function rebuild() {
     if (!plan) return;
     setConfirmRebuild(false);
-    update({ ...plan, slots: refill(buildSlots(plan), plan.slots) });
+    update({ ...plan, slots: rebuildSlots(plan) });
   }
 
   /**
@@ -412,9 +413,16 @@ export default function MeetingPlanner() {
     update({ ...plan, slots: fillSlots(plan.slots, students.map((s) => s.id)) });
   }
 
+  /**
+   * Tømmer fordelingen, bortsett fra de holdte samtalene. «Start på nytt» kan
+   * ikke bety at samtalene læreren har hatt forsvinner ut av oversikten.
+   */
   function clearStudents() {
     if (!plan) return;
-    update({ ...plan, slots: plan.slots.map((s) => ({ ...s, student_id: null })) });
+    update({
+      ...plan,
+      slots: plan.slots.map((s) => (s.done ? s : { ...s, student_id: null })),
+    });
   }
 
   /** Rydder bort tidene ingen skal ha, så arket blir kort nok til å henge opp. */
@@ -437,7 +445,7 @@ export default function MeetingPlanner() {
     update({
       ...plan,
       week_start: addDays(plan.week_start, delta * 7) || plan.week_start,
-      slots: plan.slots.map((s) => ({ ...s, date: addDays(s.date, delta * 7) || s.date })),
+      slots: shiftSlots(plan.slots, delta * 7),
     });
   }
 
@@ -450,10 +458,7 @@ export default function MeetingPlanner() {
     if (!plan || !slotMonday) return;
     const days = daysBetween(slotMonday, plan.week_start);
     if (days === 0) return;
-    update({
-      ...plan,
-      slots: plan.slots.map((s) => ({ ...s, date: addDays(s.date, days) || s.date })),
-    });
+    update({ ...plan, slots: shiftSlots(plan.slots, days) });
   }
 
   /** Den andre utveien: skjemaet settes tilbake til uka tidene ligger i. */
@@ -474,7 +479,15 @@ export default function MeetingPlanner() {
       ...plan,
       slots: [
         ...plan.slots,
-        { id: newSlotId(), date, start, minutes: plan.minutes, student_id: null, note: "" },
+        {
+          id: newSlotId(),
+          date,
+          start,
+          minutes: plan.minutes,
+          student_id: null,
+          note: "",
+          done: false,
+        },
       ],
     });
   }
@@ -531,6 +544,8 @@ export default function MeetingPlanner() {
 
   const totalSlots = plan?.slots.length ?? 0;
   const usedSlots = plan?.slots.filter((s) => s.student_id).length ?? 0;
+  /** Samtalene som er holdt. De telles for seg: det er dem læreren kan stryke. */
+  const heldSlots = plan?.slots.filter((s) => s.done).length ?? 0;
 
   if (activeStudents.length === 0) {
     return (
@@ -569,15 +584,23 @@ export default function MeetingPlanner() {
             {inDay.map((slot) => {
               const student = slot.student_id ? byId.get(slot.student_id) : undefined;
               const unknown = Boolean(slot.student_id) && !student;
+              // En holdt samtale er ikke en plan lenger, og feltene låses.
+              // Haken står igjen som veien tilbake: tas den av, er tida til å
+              // redigere igjen. Uten låsen kunne et uhell i en nedtrekksliste
+              // ha flyttet en samtale som faktisk har vært.
+              const done = slot.done;
+              const holdt = `Samtalen ${slot.start} ${label} er holdt`;
               return (
                 <li
                   key={slot.id}
                   className={`flex flex-col gap-1 rounded-lg border px-2 py-1.5 ${
                     clashes.has(slot.id)
                       ? "border-danger bg-danger-soft"
-                      : slot.student_id
-                        ? "border-border bg-surface-raised"
-                        : "border-dashed border-border bg-surface-raised"
+                      : done
+                        ? "border-accent/40 bg-accent-soft"
+                        : slot.student_id
+                          ? "border-border bg-surface-raised"
+                          : "border-dashed border-border bg-surface-raised"
                   }`}
                 >
                   <div className="flex items-center gap-1">
@@ -585,6 +608,7 @@ export default function MeetingPlanner() {
                       type="time"
                       step={300}
                       value={slot.start}
+                      disabled={done}
                       onChange={(e) => changeSlot(slot.id, { start: e.target.value })}
                       aria-label={`Starter, ${label}`}
                       className={`${inputClassSm} w-[6.5rem] tabular-nums`}
@@ -596,6 +620,7 @@ export default function MeetingPlanner() {
                       type="time"
                       step={300}
                       value={slotEnd(slot)}
+                      disabled={done}
                       onChange={(e) => setEnd(slot, e.target.value)}
                       aria-label={`Slutter, ${label}`}
                       className={`${inputClassSm} w-[6.5rem] tabular-nums`}
@@ -603,9 +628,10 @@ export default function MeetingPlanner() {
                     <button
                       type="button"
                       onClick={() => removeSlot(slot.id)}
+                      disabled={done}
                       aria-label={`Fjern tida ${slot.start} ${label}`}
-                      title="Fjern tida"
-                      className="ml-auto rounded p-1 text-subtle hover:bg-danger-soft hover:text-danger"
+                      title={done ? "Ta av haken for å kunne fjerne tida" : "Fjern tida"}
+                      className="ml-auto rounded p-1 text-subtle hover:bg-danger-soft hover:text-danger disabled:pointer-events-none disabled:opacity-40"
                     >
                       <svg
                         viewBox="0 0 16 16"
@@ -620,36 +646,67 @@ export default function MeetingPlanner() {
                     </button>
                   </div>
 
-                  <select
-                    value={slot.student_id ?? ""}
-                    onChange={(e) => setStudent(slot.id, e.target.value || null)}
-                    aria-label={`Elev ${slot.start} ${label}`}
-                    className={inputClassSm}
-                  >
-                    <option value="">— ledig —</option>
-                    {unknown && (
-                      // Eleven er slettet i en eldre utgave av lagringen. Vises
-                      // som valg, ellers ville feltet stått tomt samtidig som
-                      // tida var opptatt.
-                      <option value={slot.student_id ?? ""}>{UNKNOWN}</option>
+                  <div className="flex items-center gap-2">
+                    <select
+                      value={slot.student_id ?? ""}
+                      disabled={done}
+                      onChange={(e) => setStudent(slot.id, e.target.value || null)}
+                      aria-label={`Elev ${slot.start} ${label}`}
+                      className={`${inputClassSm} min-w-0 flex-1`}
+                    >
+                      <option value="">— ledig —</option>
+                      {unknown && (
+                        // Eleven er slettet i en eldre utgave av lagringen. Vises
+                        // som valg, ellers ville feltet stått tomt samtidig som
+                        // tida var opptatt.
+                        <option value={slot.student_id ?? ""}>{UNKNOWN}</option>
+                      )}
+                      {/* Eleven som står i tida er alltid med, også når hen hører
+                          til en annen kontaktlærer enn den oppsettet gjelder —
+                          ellers ville feltet stått tomt for en opptatt tid. */}
+                      {(student && !students.includes(student)
+                        ? [student, ...students]
+                        : students
+                      ).map((s) => {
+                        const at = placedIn.get(s.id);
+                        const elsewhere = at && at.id !== slot.id;
+                        // Står eleven i en samtale som er holdt, er navnet
+                        // ikke å flytte hit. Valget er avslått og ikke bare
+                        // virkningsløst: et navn som ikke gjør noe når det
+                        // velges ser ut som en feil.
+                        return (
+                          <option key={s.id} value={s.id} disabled={Boolean(elsewhere && at.done)}>
+                            {s.name}
+                            {elsewhere ? ` · ${placedLabel(at)}${at.done ? " · hatt" : ""}` : ""}
+                          </option>
+                        );
+                      })}
+                    </select>
+
+                    {/* Haken vises først når tida gjelder noen: «hatt» om en
+                        tom rad i skjemaet betyr ingenting. */}
+                    {(slot.student_id || slot.note.trim() || done) && (
+                      <label
+                        className={`flex shrink-0 cursor-pointer items-center gap-1 text-[11px] ${
+                          done ? "font-medium text-accent-text" : "text-muted"
+                        }`}
+                        title={
+                          done
+                            ? "Samtalen er holdt. Tida står fast, og flyttes verken av en ny fordeling eller av at runden utsettes."
+                            : "Kryss av når samtalen er holdt. Tida blir stående der den er."
+                        }
+                      >
+                        <input
+                          type="checkbox"
+                          checked={done}
+                          onChange={(e) => changeSlot(slot.id, { done: e.target.checked })}
+                          aria-label={holdt}
+                          className="h-3.5 w-3.5 accent-[var(--accent)]"
+                        />
+                        Hatt
+                      </label>
                     )}
-                    {/* Eleven som står i tida er alltid med, også når hen hører
-                        til en annen kontaktlærer enn den oppsettet gjelder —
-                        ellers ville feltet stått tomt for en opptatt tid. */}
-                    {(student && !students.includes(student)
-                      ? [student, ...students]
-                      : students
-                    ).map((s) => {
-                      const at = placedIn.get(s.id);
-                      const elsewhere = at && at.id !== slot.id;
-                      return (
-                        <option key={s.id} value={s.id}>
-                          {s.name}
-                          {elsewhere ? ` · ${placedLabel(at)}` : ""}
-                        </option>
-                      );
-                    })}
-                  </select>
+                  </div>
 
                   {(showNotes || slot.note.trim()) && (
                     <input
@@ -1022,7 +1079,12 @@ export default function MeetingPlanner() {
               <button
                 type="button"
                 onClick={clearStudents}
-                disabled={usedSlots === 0}
+                disabled={usedSlots === heldSlots}
+                title={
+                  heldSlots > 0
+                    ? "Tømmer fordelingen. Samtalene du har krysset av som holdt blir stående."
+                    : "Tømmer fordelingen, så du kan begynne på nytt"
+                }
                 className={`${ghostButton("sm")} hover:text-danger`}
               >
                 Tøm fordelingen
@@ -1058,6 +1120,7 @@ export default function MeetingPlanner() {
               {plan.teacher.trim() ? ` hos ${plan.teacher}` : " i klassen"} ·{" "}
               {plural(totalSlots, "tid", "tider")}
               {weekSpan ? ` i ${weekSpan}` : ""}
+              {heldSlots > 0 ? ` · ${heldSlots} holdt` : ""}
             </span>
             <span className={saved ? "text-subtle" : "text-accent-text"}>
               {saved ? "Lagret" : "Lagrer …"}
@@ -1137,7 +1200,10 @@ export default function MeetingPlanner() {
                 linjer om uke 38 rett etter hverandre er ingen hjelp. */}
             {weeks.length > 0 && !outOfSync && (
               <div className="flex flex-wrap items-center gap-2 text-xs text-muted">
-                <span>Hele runden ligger i {weekSpan}. Skal den utsettes?</span>
+                <span>
+                  Hele runden ligger i {weekSpan}. Skal den utsettes?
+                  {heldSlots > 0 ? " Samtalene du har hatt blir stående." : ""}
+                </span>
                 <button
                   type="button"
                   onClick={() => shiftWeeks(-1)}
@@ -1318,6 +1384,13 @@ export default function MeetingPlanner() {
               og {plural(plan.weeks, "uke", "uker")} fram — og tider du har flyttet for hånd eller
               skrevet merknad på forsvinner. Elevene som står oppført beholder ukedagen sin: den som
               skulle tirsdag får tirsdag, også om tidene nå lages i en annen uke.
+              {heldSlots > 0 && (
+                <>
+                  {" "}
+                  De {heldSlots} samtalene du har krysset av som holdt står fast, på dagen og
+                  klokkeslettet de hadde.
+                </>
+              )}
               <br />
               <br />
               Skal du bare ha med en uke til, er det{" "}

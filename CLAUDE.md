@@ -354,6 +354,15 @@ fra, og et oppsett kan gå over flere uker.
 - **`refill` lar hver elev beholde dagen sin** når tidene lages på nytt. Dagen er
   det første de foresatte skriver ned, og en endring fra 20 til 30 minutter skal
   flytte klokkeslettene, ikke halve klassen til en annen dag.
+- **En holdt samtale er ikke en plan lenger** (`slot.done`). Haken «Hatt» sier at
+  samtalen har vært, og da står tida fast: `rebuildSlots` legger de holdte til
+  side og kaster nye tider som ville lagt seg oppå dem, `shiftSlots` lar dem
+  ligge når runden utsettes, «Tøm fordelingen» rører dem ikke, og `fillSlots`
+  hopper over dem. Feltene på kortet låses, og haken er veien tilbake — uten
+  låsen kunne et uhell i en nedtrekksliste flyttet en samtale som faktisk har
+  skjedd. `withStudentAt` nekter både å endre en holdt tid og å tømme den for å
+  gi eleven plass et annet sted; i nedtrekkslista er navnet avslått og merket
+  «hatt», for et valg som ikke gjør noe ser ut som en feil.
 - **En merknad på en tid setter den av**: fordelingen hopper over tider med
   merknad, og det er slik en pause eller et annet møte blokkeres i skjemaet.
 - **Eleven velges i en nedtrekksliste, ikke ved å dras.** Samme avveining som i
@@ -503,6 +512,9 @@ Versjon 6 la til `meetings` — samtaleoppsett. Eldre kopier mangler lista, og
 leses som «ingen samtaler». `normalizePlan()` fyller inn felter som mangler i et
 enkelt oppsett, og kaster oppsett som ikke er til å lese — et skjema uten dager
 eller med lengde 0 ville ellers veltet samtalesida.
+
+Versjon 8 ga samtaletidene `done` — samtalen er holdt. Eldre kopier mangler
+feltet, og leses som «ikke holdt»; noe annet kunne vi ikke ha visst.
 
 Versjon 7 ga samtaletidene dato i stedet for ukedagsnummer, og oppsettet feltet
 `weeks`. `normalizePlan()` regner om «dag 3» til datoen den dagen hadde i uka
