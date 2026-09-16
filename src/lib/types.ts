@@ -160,6 +160,12 @@ export interface MeetingSlot {
   student_id: string | null;
   /** Merknad læreren skriver selv: «pause», «møte med helsesykepleier». */
   note: string;
+  /**
+   * Samtalen er holdt. Da er tida ikke lenger en plan, men noe som har skjedd:
+   * den blir stående der den står, og verken en ny fordeling eller en utsettelse
+   * av runden flytter den.
+   */
+  done: boolean;
 }
 
 /**

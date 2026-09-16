@@ -341,6 +341,7 @@ export function buildSlots(plan: MeetingPlan): MeetingSlot[] {
           minutes,
           student_id: null,
           note: "",
+          done: false,
         });
         at += minutes + gap;
         count += 1;
@@ -399,10 +400,11 @@ export function addSlots(plan: MeetingPlan): MeetingSlot[] {
  * blir tjue elever til fire om dagen, tidlig på dagen, og resten av uka står
  * åpen for dem som må bytte.
  *
- * To slags tider hoppes over. Tider som alt har en elev, fordi de kan være
- * avtalt med noen. Og tider læreren har skrevet en merknad på: det er slik en
+ * Tre slags tider hoppes over. Tider som alt har en elev, fordi de kan være
+ * avtalt med noen. Tider læreren har skrevet en merknad på: det er slik en
  * pause eller et annet møte settes av i skjemaet, og en fordeling som fylte
- * dem med elever ville tatt fra læreren lunsjen.
+ * dem med elever ville tatt fra læreren lunsjen. Og tider som er holdt — de
+ * forteller hva som har skjedd, og en fordeling kan ikke skrive om historien.
  */
 export function fillSlots(slots: MeetingSlot[], studentIds: string[]): MeetingSlot[] {
   const taken = new Set(slots.map((s) => s.student_id).filter(Boolean));
@@ -412,7 +414,7 @@ export function fillSlots(slots: MeetingSlot[], studentIds: string[]): MeetingSl
   // Ledige tider, dag for dag, tidligst først.
   const free = new Map<string, MeetingSlot[]>();
   for (const slot of sortSlots(slots)) {
-    if (slot.student_id || slot.note.trim()) continue;
+    if (slot.student_id || slot.note.trim() || slot.done) continue;
     const inDay = free.get(slot.date) ?? [];
     inDay.push(slot);
     free.set(slot.date, inDay);
@@ -474,7 +476,7 @@ export function refill(fresh: MeetingSlot[], previous: MeetingSlot[]): MeetingSl
 
     const open = target
       ? slotsForDate(fresh, target).filter(
-          (s) => !s.student_id && !s.note.trim() && !taken.has(s.id)
+          (s) => !s.student_id && !s.note.trim() && !s.done && !taken.has(s.id)
         )
       : [];
     students.forEach((id, i) => {
@@ -490,6 +492,38 @@ export function refill(fresh: MeetingSlot[], previous: MeetingSlot[]): MeetingSl
     placed.has(s.id) ? { ...s, student_id: placed.get(s.id)! } : s
   );
   return spill.length > 0 ? fillSlots(filled, spill) : filled;
+}
+
+/**
+ * Bygger hele oppsettet på nytt fra skjemaet, men lar de holdte samtalene stå.
+ *
+ * En holdt samtale er ikke en plan lenger. Den har vært, på den dagen og det
+ * klokkeslettet som står der, og et nytt skjema kan ikke gjøre den ugjort.
+ * Derfor legges de til side først, og de nye tidene som ville lagt seg oppå dem
+ * kastes — ellers sto det to samtaler klokka 15.00, og bare den ene hadde
+ * skjedd.
+ *
+ * Resten går veien de alltid har gått: `refill` setter elevene inn igjen på
+ * dagen sin. De holdte er ikke med der, så ingen av dem får en ny tid i tillegg
+ * til den de allerede har hatt.
+ */
+export function rebuildSlots(plan: MeetingPlan): MeetingSlot[] {
+  const held = plan.slots.filter((s) => s.done);
+  const rest = plan.slots.filter((s) => !s.done);
+  const fresh = buildSlots(plan).filter((s) => !held.some((h) => overlaps(h, s)));
+  return sortSlots([...held, ...refill(fresh, rest)]);
+}
+
+/**
+ * Skyver tidene så mange dager, og lar de holdte ligge.
+ *
+ * Å utsette runden en uke er å utsette det som ikke har skjedd ennå. Samtalene
+ * som er holdt står fast på datoen de faktisk hadde — flyttet vi dem med, ville
+ * oversikten påstått at mandagens samtale var neste mandag.
+ */
+export function shiftSlots(slots: MeetingSlot[], days: number): MeetingSlot[] {
+  if (days === 0) return slots;
+  return slots.map((s) => (s.done ? s : { ...s, date: addDays(s.date, days) || s.date }));
 }
 
 /** Elevene som ikke har fått en tid ennå. */
@@ -508,9 +542,13 @@ export function withStudentAt(
   studentId: string | null
 ): MeetingSlot[] {
   const target = slots.find((s) => s.id === slotId);
-  if (!target) return slots;
+  if (!target || target.done) return slots;
   const displaced = target.student_id;
   const previous = studentId ? slots.find((s) => s.student_id === studentId) : undefined;
+  // Eleven står i en samtale som er holdt. Den kan ikke tømmes for å gi plass
+  // et annet sted — da ville et navn valgt i feil rad slettet at samtalen var
+  // holdt i det hele tatt. Vil læreren likevel flytte den, tas haken av først.
+  if (previous?.done) return slots;
 
   return slots.map((slot) => {
     if (slot.id === slotId) return { ...slot, student_id: studentId };
@@ -636,6 +674,9 @@ export function normalizePlan(raw: unknown): MeetingPlan | null {
                 : defaultMinutes(kind),
               student_id: typeof s.student_id === "string" ? s.student_id : null,
               note: typeof s.note === "string" ? s.note : "",
+              // Alt annet enn `true` er «ikke holdt». En kopi fra før feltet
+              // fantes har ingenting her, og da er det riktige svaret nei.
+              done: s.done === true,
             };
           })
       : [],

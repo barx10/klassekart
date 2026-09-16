@@ -45,8 +45,10 @@ const KEY = "state";
  * 7: samtaletidene fikk dato i stedet for ukedagsnummer, og oppsettet fikk
  *    `weeks`. `normalizePlan()` regner om «dag 3» til datoen den dagen hadde i
  *    uka oppsettet gjaldt, så en kopi fra versjon 6 leses uten tap.
+ * 8: samtaletidene fikk `done` — samtalen er holdt. Eldre kopier mangler
+ *    feltet, og leses som «ikke holdt». Noe annet kunne vi ikke ha visst.
  */
-export const BACKUP_VERSION = 7;
+export const BACKUP_VERSION = 8;
 
 export interface LocalData {
   version: number;
