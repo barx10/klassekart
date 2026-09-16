@@ -14,11 +14,16 @@ import type { MeetingKind } from "./types";
  * til eleven. I utviklingssamtalen sitter de foresatte ved samme bord, og da er
  * halve poenget å få de tre til å snakke sammen: derfor står det flere spørsmål
  * om hva hjemmet ser, og om hvem som gjør hva etterpå.
+ *
+ * Merkelappen brukes derfor ulikt i de to settene: i elevsamtalen sier den hva
+ * spørsmålet handler om, i utviklingssamtalen hvem det går til. Det er det som
+ * er uklart når tre sitter rundt bordet — læreren må vite om hen spør eleven
+ * eller de foresatte, og et tema-navn hadde ikke svart på det.
  */
 
 /** Ett forslag: en kort merkelapp, og spørsmålet selv. */
 export interface MeetingQuestion {
-  /** Hva spørsmålet handler om — «Sosialt miljø». Kan stå tomt. */
+  /** Hva spørsmålet handler om, eller hvem det går til — «Til foresatte». Kan stå tomt. */
   label?: string;
   /** Spørsmålet slik det kan stilles. */
   text: string;
@@ -104,19 +109,19 @@ const UTVIKLINGSSAMTALE: QuestionSet = {
   who: "Eleven, kontaktlæreren og de foresatte.",
   groups: [
     {
-      title: "Innledning",
+      title: "Trivsel og hjem-skole-samarbeid",
       questions: [
         {
-          label: "Elevens ord først",
-          text: "Hvordan synes du selv det går på skolen nå — både faglig og sosialt?",
+          label: "Til eleven",
+          text: "Hvordan trives du på skolen nå?",
         },
         {
-          label: "Hjemmets inntrykk",
-          text: "Hva forteller eleven om skoledagen hjemme? Er det noe hen gruer seg til, eller gleder seg til?",
+          label: "Til foresatte",
+          text: "Hvordan opplever dere at barnet trives, sett hjemmefra?",
         },
         {
-          label: "Siden sist",
-          text: "Hva har blitt bedre siden forrige samtale, og hva står på stedet hvil?",
+          label: "Felles",
+          text: "Er det noe som skjer hjemme eller på skolen som påvirker skolehverdagen, og som vi bør vite om?",
         },
       ],
     },
@@ -124,58 +129,79 @@ const UTVIKLINGSSAMTALE: QuestionSet = {
       title: "Faglig utvikling",
       questions: [
         {
-          label: "Status i fagene",
-          text: "Hvilke fag går det godt i, og i hvilke fag trengs det mer støtte eller større utfordringer?",
+          label: "Lærer",
+          text: "Kort status på faglig utvikling siden forrige samtale.",
         },
         {
-          label: "Arbeidsvaner i timene",
-          text: "Kommer eleven i gang på egen hånd, holder hen fokus, og blir oppgavene fullført og levert?",
+          label: "Til eleven",
+          text: "Hvilke fag føler du at du mestrer godt? Hvor trenger du mer støtte?",
         },
         {
-          label: "Hjemmearbeid",
-          text: "Hvordan fungerer lekser og forberedelser hjemme? Er det rutiner, et sted å jobbe, og passe mye hjelp å få?",
+          label: "Til foresatte",
+          text: "Stemmer dette bildet med det dere ser hjemmefra?",
         },
       ],
     },
     {
-      title: "Trivsel og sosialt",
+      title: "Arbeidsvaner og hjemmearbeid",
       questions: [
         {
-          label: "Venner og klassemiljø",
-          text: "Hvem er eleven sammen med i friminuttene og på fritiden? Er det noen som blir stående utenfor?",
+          label: "Til eleven",
+          text: "Hvordan går det med lekser og forberedelser?",
         },
         {
-          label: "Trygghet",
-          text: "Er det noe på skolen eller på nett som gjør skoledagen utrygg? Skolen har plikt til å følge opp en elev som ikke har det trygt og godt.",
+          label: "Til foresatte",
+          text: "Hvordan fungerer lekselesing hjemme? Har dere faste rutiner, tid og sted?",
         },
         {
-          label: "Hverdagen utenom skolen",
-          text: "Hvordan er søvn, fritidsaktiviteter og skjermtid på hverdager? Rekker eleven å hvile?",
+          label: "Til foresatte",
+          text: "Klarer barnet å jobbe selvstendig, eller trengs tett oppfølging?",
         },
       ],
     },
     {
-      title: "Mål og tiltak videre",
+      title: "Sosialt miljø og trygghet",
       questions: [
         {
-          label: "Mål til neste samtale",
-          text: "Hva skal eleven jobbe mot til neste samtale — gjerne ett faglig mål og ett knyttet til arbeidsvaner eller det sosiale?",
+          label: "Til eleven",
+          text: "Hvem er du mest sammen med? Føler du deg trygg i klassen?",
         },
         {
-          label: "Hvem gjør hva",
-          text: "Hva gjør eleven selv, hva gjør skolen, og hva gjør hjemmet for at målet skal nås?",
+          label: "Til foresatte",
+          text: "Har dere inntrykk av at barnet har det bra sosialt, både på skolen og på fritiden?",
         },
         {
-          label: "Kontakten mellom hjem og skole",
-          text: "Hvordan holder vi kontakten fram til neste samtale, og hvem tar kontakt med hvem hvis noe skjer?",
+          label: "Til foresatte",
+          text: "Er det noe dere har hørt hjemme som skolen bør kjenne til?",
         },
+      ],
+    },
+    {
+      title: "Mål og videre skolegang",
+      questions: [
+        {
+          label: "Til eleven",
+          text: "Har du tanker om videre utdanningsvalg? (Relevant fra 8. trinn og oppover.)",
+        },
+        {
+          label: "Felles",
+          text: "Hva skal eleven jobbe med fram til neste samtale, faglig eller sosialt?",
+        },
+      ],
+    },
+    {
+      title: "Ansvarsfordeling og oppfølging",
+      questions: [
+        { text: "Hva gjør eleven selv?" },
+        { text: "Hva følger foresatte opp hjemme?" },
+        { text: "Hva bidrar skolen med?" },
       ],
     },
     {
       title: "Oppsummering",
       questions: [
         {
-          text: "Gjenta de 1–2 avtalene dere er blitt enige om, hvem som følger opp hva, og når dere hører fra hverandre igjen.",
+          text: "Kort oppsummering av avtalene, med ansvar tydelig fordelt mellom elev, foresatte og skole.",
         },
       ],
     },
