@@ -601,6 +601,41 @@ export function clashingSlots(slots: MeetingSlot[]): Set<string> {
   return clashes;
 }
 
+/**
+ * Tider som kolliderer med en samtale i et **annet** oppsett.
+ *
+ * En kontaktlærer har gjerne to klasser, og setter dem opp hver for seg — men
+ * hen kan bare være ett sted tirsdag klokka 15. Kollisjonen er derfor ikke
+ * synlig noe sted i oppsettet den oppstår i, og det er nettopp den som koster
+ * en telefon til en familie.
+ *
+ * Svaret er en tabell fra tida til navnene den kolliderer med, og ikke bare et
+ * sett med id-er: «opptatt» uten å si av hva ber læreren lete gjennom de andre
+ * klassene sine selv.
+ *
+ * Bare tider som gjelder noen teller. En ledig time i 5B er ingen kollisjon —
+ * den er ledig, og det er hele poenget med å ha den.
+ */
+export function crossClashes(
+  slots: MeetingSlot[],
+  others: { label: string; slots: MeetingSlot[] }[]
+): Map<string, string[]> {
+  const found = new Map<string, string[]>();
+  for (const slot of slots) {
+    if (!slot.student_id && !slot.note.trim()) continue;
+    for (const other of others) {
+      const truffet = other.slots.some(
+        (s) => (s.student_id || s.note.trim()) && overlaps(slot, s)
+      );
+      if (!truffet) continue;
+      const liste = found.get(slot.id) ?? [];
+      if (!liste.includes(other.label)) liste.push(other.label);
+      found.set(slot.id, liste);
+    }
+  }
+  return found;
+}
+
 // ---------------------------------------------------------------------------
 // Oppsettet
 // ---------------------------------------------------------------------------

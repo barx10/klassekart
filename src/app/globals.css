@@ -40,6 +40,21 @@
   --gender-annet: #6d6a63;
   --gender-annet-soft: #efeee9;
 
+  /* Fargene oversikten skiller klassene med. En kontaktlærer har to eller tre
+     klasser, og i en felles uke er det klassen som er forskjellen: uten farge
+     må læreren lese klassenavnet på hver eneste linje. Fyllet er lyst, som
+     setene i klasserommet, så navnet kan stå i vanlig tekstfarge. */
+  --plan-1: #1f66c0;
+  --plan-1-soft: #e7f0fc;
+  --plan-2: #b1590f;
+  --plan-2-soft: #fbeee2;
+  --plan-3: #1a7f37;
+  --plan-3-soft: #e6f4ea;
+  --plan-4: #7a3fb8;
+  --plan-4-soft: #f1e9fb;
+  --plan-5: #a3286a;
+  --plan-5-soft: #fbe6f0;
+
   --seq-0: #eef4fd;
   --seq-1: #cde2fb;
   --seq-2: #86b6ef;
@@ -109,6 +124,17 @@
     --gender-gutt-soft: #16283f;
     --gender-annet: #a8a69d;
     --gender-annet-soft: #2a2a28;
+
+    --plan-1: #6ba6ef;
+    --plan-1-soft: #16283f;
+    --plan-2: #e0954f;
+    --plan-2-soft: #3a2a19;
+    --plan-3: #3fb950;
+    --plan-3-soft: #10281a;
+    --plan-4: #b78ce8;
+    --plan-4-soft: #2a1f3c;
+    --plan-5: #e884ab;
+    --plan-5-soft: #3a2230;
 
     /* Sekvensiell skala snur anker i mørk modus: lav verdi ligger nær
        (mørk) bakgrunn, høy verdi bryter tydeligst mot den. */
@@ -306,9 +332,17 @@ body {
   }
 
   /* Bunnteksten hører ikke hjemme på et ark med elevnavn, og den stjal den
-     høyden arket trenger for å være én side. */
-  body:has([data-print-sheet]) footer {
+     høyden arket trenger for å være én side. Lappene klippes fra hverandre, og
+     der ville «Lærerliv © 2026» havnet på den siste lappen. */
+  body:has([data-print-sheet]) footer,
+  body:has([data-print-notes]) footer {
     display: none !important;
+  }
+
+  /* En lapp skal ikke deles av et sidebrudd — halve klokkeslettet på side to
+     er ingen beskjed hjem. */
+  [data-print-notes] > * {
+    break-inside: avoid;
   }
 
   /* Liggende ark: et klasserom er bredere enn det er dypt, og stående A4 ga et
