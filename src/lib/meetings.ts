@@ -426,8 +426,19 @@ export function addSlots(plan: MeetingPlan): MeetingSlot[] {
  * pause eller et annet møte settes av i skjemaet, og en fordeling som fylte
  * dem med elever ville tatt fra læreren lunsjen. Og tider som er holdt — de
  * forteller hva som har skjedd, og en fordeling kan ikke skrive om historien.
+ *
+ * `busy` er tidene læreren alt er opptatt i **andre** oppsett. En kontaktlærer
+ * med to klasser kan bare være ett sted tirsdag klokka 15, og en fordeling som
+ * bare så sitt eget oppsett satte glatt en familie i 7A oppå en i 5B — en
+ * kollisjon appen så etterpå og advarte om, men som da alt var avtalt. Tidene
+ * blir stående som ledige; det er reserven læreren trenger når noen må bytte
+ * dag. Fordelingen lar dem bare være.
  */
-export function fillSlots(slots: MeetingSlot[], studentIds: string[]): MeetingSlot[] {
+export function fillSlots(
+  slots: MeetingSlot[],
+  studentIds: string[],
+  busy: MeetingSlot[] = []
+): MeetingSlot[] {
   const taken = new Set(slots.map((s) => s.student_id).filter(Boolean));
   const queue = studentIds.filter((id) => !taken.has(id));
   if (queue.length === 0) return slots;
@@ -436,6 +447,7 @@ export function fillSlots(slots: MeetingSlot[], studentIds: string[]): MeetingSl
   const free = new Map<string, MeetingSlot[]>();
   for (const slot of sortSlots(slots)) {
     if (slot.student_id || slot.note.trim() || slot.done) continue;
+    if (busy.some((b) => overlaps(b, slot))) continue;
     const inDay = free.get(slot.date) ?? [];
     inDay.push(slot);
     free.set(slot.date, inDay);
@@ -475,8 +487,16 @@ export function fillSlots(slots: MeetingSlot[], studentIds: string[]): MeetingSl
  * reserve falt hele klassen ned i den vanlige fordelingen, og da stemte ikke
  * lenger løftet om at dagen står i ro. Er det heller ingen slik ukedag — eller
  * færre tider på den enn det sto elever der — går de siste den vanlige veien.
+ *
+ * `busy` er tidene læreren er opptatt i et annet oppsett, og de er utenfor her
+ * også: en ny lengde skal ikke kunne skyve en familie inn i en samtale som
+ * står i en annen klasse.
  */
-export function refill(fresh: MeetingSlot[], previous: MeetingSlot[]): MeetingSlot[] {
+export function refill(
+  fresh: MeetingSlot[],
+  previous: MeetingSlot[],
+  busy: MeetingSlot[] = []
+): MeetingSlot[] {
   const placed = new Map<string, string>();
   const spill: string[] = [];
   // To gamle datoer kan peke på samme nye dag — to uker som blir til én — så
@@ -497,7 +517,12 @@ export function refill(fresh: MeetingSlot[], previous: MeetingSlot[]): MeetingSl
 
     const open = target
       ? slotsForDate(fresh, target).filter(
-          (s) => !s.student_id && !s.note.trim() && !s.done && !taken.has(s.id)
+          (s) =>
+            !s.student_id &&
+            !s.note.trim() &&
+            !s.done &&
+            !taken.has(s.id) &&
+            !busy.some((b) => overlaps(b, s))
         )
       : [];
     students.forEach((id, i) => {
@@ -512,7 +537,7 @@ export function refill(fresh: MeetingSlot[], previous: MeetingSlot[]): MeetingSl
   const filled = fresh.map((s) =>
     placed.has(s.id) ? { ...s, student_id: placed.get(s.id)! } : s
   );
-  return spill.length > 0 ? fillSlots(filled, spill) : filled;
+  return spill.length > 0 ? fillSlots(filled, spill, busy) : filled;
 }
 
 /**
@@ -528,11 +553,11 @@ export function refill(fresh: MeetingSlot[], previous: MeetingSlot[]): MeetingSl
  * dagen sin. De holdte er ikke med der, så ingen av dem får en ny tid i tillegg
  * til den de allerede har hatt.
  */
-export function rebuildSlots(plan: MeetingPlan): MeetingSlot[] {
+export function rebuildSlots(plan: MeetingPlan, busy: MeetingSlot[] = []): MeetingSlot[] {
   const held = plan.slots.filter((s) => s.done);
   const rest = plan.slots.filter((s) => !s.done);
   const fresh = buildSlots(plan).filter((s) => !held.some((h) => overlaps(h, s)));
-  return sortSlots([...held, ...refill(fresh, rest)]);
+  return sortSlots([...held, ...refill(fresh, rest, busy)]);
 }
 
 /**
@@ -602,7 +627,22 @@ export function clashingSlots(slots: MeetingSlot[]): Set<string> {
 }
 
 /**
- * Tider som kolliderer med en samtale i et **annet** oppsett.
+ * Tidene i et annet oppsett som faktisk opptar læreren: de som gjelder en elev
+ * eller bærer en merknad.
+ *
+ * En ledig time i 5B er ingen hindring — den er ledig, og det er hele poenget
+ * med å ha den. Fordelingen tar imot denne lista og lar tidene som ligger oppå
+ * dem være.
+ */
+export function busySlots(others: { slots: MeetingSlot[] }[]): MeetingSlot[] {
+  return others.flatMap((other) =>
+    other.slots.filter((s) => s.student_id || s.note.trim())
+  );
+}
+
+/**
+ * Tider som ligger oppå en samtale i et **annet** oppsett, og navnet på det de
+ * treffer.
  *
  * En kontaktlærer har gjerne to klasser, og setter dem opp hver for seg — men
  * hen kan bare være ett sted tirsdag klokka 15. Kollisjonen er derfor ikke
@@ -613,16 +653,22 @@ export function clashingSlots(slots: MeetingSlot[]): Set<string> {
  * sett med id-er: «opptatt» uten å si av hva ber læreren lete gjennom de andre
  * klassene sine selv.
  *
- * Bare tider som gjelder noen teller. En ledig time i 5B er ingen kollisjon —
- * den er ledig, og det er hele poenget med å ha den.
+ * **Ledige tider er med.** De er ikke en feil — ingen er satt opp der ennå —
+ * men de er heller ikke til å bruke: `fillSlots` hopper over dem, og står det
+ * ikke på tida selv at den er opptatt et annet sted, ville læreren valgt
+ * nettopp den i nedtrekkslista og laget kollisjonen for hånd. Den som leser
+ * svaret skiller selv: en truffet tid som gjelder noen er en kollisjon å
+ * rette, en ledig er bare opptatt.
+ *
+ * I den andre enden teller bare tider som gjelder noen. En ledig time i 5B er
+ * ingen hindring — den er ledig, og det er hele poenget med å ha den.
  */
-export function crossClashes(
+export function crossBusy(
   slots: MeetingSlot[],
   others: { label: string; slots: MeetingSlot[] }[]
 ): Map<string, string[]> {
   const found = new Map<string, string[]>();
   for (const slot of slots) {
-    if (!slot.student_id && !slot.note.trim()) continue;
     for (const other of others) {
       const truffet = other.slots.some(
         (s) => (s.student_id || s.note.trim()) && overlaps(slot, s)

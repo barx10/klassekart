@@ -481,9 +481,25 @@ sin egen side, og der ser uka romslig ut — det er først når begge legges opp
 hverandre at tirsdag ettermiddag viser seg å være full. Da har familien alt fått
 beskjed.
 
-- **`crossClashes` finner tider som kolliderer med et annet oppsett**, og
-  planleggeren viser hvilket: «Opptatt: 5B: Elevsamtaler». En rød ramme alene
-  ville sagt at noe er galt uten å si hvor læreren skal lete.
+- **`crossBusy` finner tider som ligger oppå et annet oppsett**, og planleggeren
+  viser hvilket: «Opptatt: 5B: Elevsamtaler». En rød ramme alene ville sagt at
+  noe er galt uten å si hvor læreren skal lete. Ledige tider er med i svaret,
+  men merkes i dempet farge: de er ikke en feil — ingen er satt opp der — men de
+  er heller ikke til å bruke, og uten merket ville læreren valgt nettopp den i
+  nedtrekkslista og laget kollisjonen for hånd.
+- **Fordelingen hopper over tider læreren er opptatt i en annen klasse**
+  (`busySlots` inn i `fillSlots`, `refill` og `rebuildSlots`). Før så den bare
+  sitt eget oppsett og satte glatt en familie i 7A oppå en i 5B; kollisjonen kom
+  fram etterpå, som et varsel om noe som allerede var avtalt. Tidene slettes
+  ikke — de blir stående ledige, for det er reserven læreren trenger når noen må
+  bytte dag.
+- **Avhukinga av hvilke oppsett som teller er delt** (`ignoredPlans` i
+  `AppDataProvider`), og står begge steder: over tidene i planlegginga og i
+  «Alle klasser». Den lå først bare i oversikten, og da haket læreren bort 5B
+  der, gikk tilbake til planlegginga — og fikk fortsatt vite at tidene lå oppå
+  en annen avtale. Valget er et blikk på uka og ikke en innstilling, så det
+  lagres ikke: en kollisjon læreren har sett bort fra i dag skal være synlig
+  igjen i morgen.
 - **Fanen «Alle klasser» er en ren lesevisning.** Tidene endres der de hører
   hjemme. En redigering på tvers måtte svart på hvilket oppsett en ny tid skulle
   havne i, og det spørsmålet har ikke noe godt svar.
