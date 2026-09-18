@@ -614,6 +614,20 @@ export async function fetchMeetingPlans(classId: string): Promise<MeetingPlan[]>
 }
 
 /**
+ * Alle samtaleoppsett, i alle klasser.
+ *
+ * En kontaktlærer har gjerne to klasser, og samtaleukene deres er den samme
+ * uka: skal tirsdag klokka 15 kunne settes opp i 7A, må det være synlig at 5B
+ * alt har noen der. Derfor leses oppsettene globalt, slik elevene gjør, og ikke
+ * én klasse om gangen.
+ */
+export async function fetchAllMeetingPlans(): Promise<MeetingPlan[]> {
+  return read((data) =>
+    [...data.meetings].sort((a, b) => b.created_at.localeCompare(a.created_at))
+  );
+}
+
+/**
  * Lager et nytt samtaleoppsett med standardskjemaet, og tidene det gir.
  * Oppsettet lagres med én gang: læreren skal ikke risikere å miste en halv
  * uke med tider fordi hen glemte å trykke lagre.

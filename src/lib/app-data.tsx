@@ -27,7 +27,7 @@ import {
   fetchAllStudents,
   fetchChartHistory,
   fetchGroupSets,
-  fetchMeetingPlans,
+  fetchAllMeetingPlans,
   createMeetingPlan as apiCreateMeetingPlan,
   saveMeetingPlan as apiSaveMeetingPlan,
   deleteMeetingPlan as apiDeleteMeetingPlan,
@@ -113,6 +113,12 @@ interface AppDataValue {
 
   /** Samtaleoppsettene for klassen — elevsamtaler og utviklingssamtaler. */
   meetingPlans: MeetingPlan[];
+  /**
+   * Samtaleoppsettene i **alle** klasser. En kontaktlærer har gjerne to, og de
+   * har samtaleuke samtidig: uten den samlede lista er en kollisjon mellom 7A
+   * og 5B usynlig helt til begge familiene står i gangen.
+   */
+  allMeetingPlans: MeetingPlan[];
   /** Lager et nytt oppsett med standardskjemaet, og lagrer det med én gang. */
   createMeetingPlan: (kind: MeetingKind) => Promise<MeetingPlan>;
   /** Lagrer et helt oppsett — skjemaet og tidene i samme skriv. */
@@ -152,7 +158,7 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
   const [pairHistory, setPairHistory] = useState<PairHistoryRow[]>([]);
   const [apartPairs, setApartPairs] = useState<ApartPair[]>([]);
   const [groupSets, setGroupSets] = useState<GroupSet[]>([]);
-  const [meetingPlans, setMeetingPlans] = useState<MeetingPlan[]>([]);
+  const [allMeetingPlans, setAllMeetingPlans] = useState<MeetingPlan[]>([]);
   const [loadedClassId, setLoadedClassId] = useState<string | null>(null);
   const [generating, setGenerating] = useState(false);
   // Teller opp når lagringen er byttet ut under føttene på oss (import), slik
@@ -172,13 +178,17 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
   // --- Globale data: klasser og elever ------------------------------------
   const loadAll = useCallback(
     () =>
-      Promise.all([fetchClasses(), fetchAllStudents(), fetchContactTeachers()]).then(
-        ([cls, studs, teachers]) => {
-          setClasses(cls);
-          setStudents(studs);
-          setContactTeachers(teachers);
-        }
-      ),
+      Promise.all([
+        fetchClasses(),
+        fetchAllStudents(),
+        fetchContactTeachers(),
+        fetchAllMeetingPlans(),
+      ]).then(([cls, studs, teachers, meetings]) => {
+        setClasses(cls);
+        setStudents(studs);
+        setContactTeachers(teachers);
+        setAllMeetingPlans(meetings);
+      }),
     []
   );
 
@@ -194,7 +204,6 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
     setPairHistory([]);
     setApartPairs([]);
     setGroupSets([]);
-    setMeetingPlans([]);
     setLoadedClassId(null);
     setGenerateResult(null);
     await loadAll();
@@ -211,16 +220,14 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
       fetchPairHistory(activeClassId),
       fetchApartPairs(activeClassId),
       fetchGroupSets(activeClassId),
-      fetchMeetingPlans(activeClassId),
     ])
-      .then(([chartRows, history, apart, groups, meetings]) => {
+      .then(([chartRows, history, apart, groups]) => {
         if (cancelled) return;
         setCharts(chartRows);
         setActiveChartId(chartRows[0]?.id ?? null);
         setPairHistory(history);
         setApartPairs(apart);
         setGroupSets(groups);
-        setMeetingPlans(meetings);
         setLoadedClassId(activeClassId);
       })
       .catch((e) => {
@@ -235,6 +242,16 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
   const activeClass = useMemo(
     () => classes.find((c) => c.id === activeClassId) ?? null,
     [classes, activeClassId]
+  );
+
+  /**
+   * Klassens egne samtaleoppsett, utledet av den samlede lista. Ingen speilet
+   * kopi: et oppsett som lagres skal ikke kunne stå med én tid i klassevisningen
+   * og en annen i oversikten over alle klassene.
+   */
+  const meetingPlans = useMemo(
+    () => allMeetingPlans.filter((m) => m.class_id === activeClassId),
+    [allMeetingPlans, activeClassId]
   );
 
   // Pultoppsettet leses direkte fra klasseraden, så det finnes bare én kilde
@@ -483,7 +500,7 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
     async (kind: MeetingKind) => {
       if (!activeClassId) throw new Error("Ingen klasse er valgt.");
       const created = await apiCreateMeetingPlan(activeClassId, kind);
-      setMeetingPlans((prev) => [created, ...prev]);
+      setAllMeetingPlans((prev) => [created, ...prev]);
       return created;
     },
     [activeClassId]
@@ -491,12 +508,12 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
 
   const saveMeetingPlan = useCallback(async (plan: MeetingPlan) => {
     await apiSaveMeetingPlan(plan);
-    setMeetingPlans((prev) => prev.map((m) => (m.id === plan.id ? plan : m)));
+    setAllMeetingPlans((prev) => prev.map((m) => (m.id === plan.id ? plan : m)));
   }, []);
 
   const deleteMeetingPlan = useCallback(async (id: string) => {
     await apiDeleteMeetingPlan(id);
-    setMeetingPlans((prev) => prev.filter((m) => m.id !== id));
+    setAllMeetingPlans((prev) => prev.filter((m) => m.id !== id));
   }, []);
 
   const showChart = useCallback((chartId: string) => setActiveChartId(chartId), []);
@@ -653,6 +670,7 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
       saveGroupSet,
       deleteGroupSet,
       meetingPlans,
+      allMeetingPlans,
       createMeetingPlan,
       saveMeetingPlan,
       deleteMeetingPlan,
@@ -699,6 +717,7 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
       saveGroupSet,
       deleteGroupSet,
       meetingPlans,
+      allMeetingPlans,
       createMeetingPlan,
       saveMeetingPlan,
       deleteMeetingPlan,

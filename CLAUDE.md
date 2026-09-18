@@ -45,8 +45,9 @@ src/
     layout.tsx                  App-skall: AppDataProvider + Sidebar
     page.tsx                    Sender videre til første klasse
     klasser/[classId]/page.tsx  Verktøylinje + klasserommet (tynn side)
-    klasser/[classId]/samtaler/ Samtalene: planlegging (page) og forslag til
-                                spørsmål (sporsmal), med fanene i layout
+    klasser/[classId]/samtaler/ Samtalene: planlegging (page), alle klasser i
+                                én uke (alle) og forslag til spørsmål
+                                (sporsmal), med fanene i layout
     personvern/page.tsx         Personvernsiden læreren kan vise fram
   components/
     Sidebar.tsx                 Klasser, elever, tidligere kart, par-oversikt
@@ -55,6 +56,7 @@ src/
     ClassroomView.tsx           Klassekartet i fullskjerm, til projektoren
     StudentGroups.tsx           Grupper til prosjektarbeid
     MeetingPlanner.tsx          Samtaleuka: skjema, tider og hvem som får dem
+    MeetingOverview.tsx         Alle klassenes samtaler i samme uke (lesevisning)
     MeetingQuestions.tsx        Forslag til spørsmål i de to samtaletypene
     StudentManager.tsx          Legg til/rediger elever (kompakt, for menyen)
     PairHeatmap.tsx             Varmekart over hvem som har sittet sammen
@@ -68,6 +70,7 @@ src/
                                 og gruppestørrelsene grupperingen bruker
     meetings.ts                 Samtaletider: klokkeslett, uka, fordelingen
     meeting-questions.ts        Spørsmålene selv — faste, ikke lagrede data
+    calendar.ts                 Samtaletidene som kalenderfil (.ics)
     api.ts                      Datalaget: klasser, elever, kart, par
     local-db.ts                 Lagring i nettleseren (IndexedDB) + sikkerhetskopi
     backup-file.ts              Får sikkerhetskopien ned på maskinen
@@ -427,6 +430,71 @@ linjer gjør.
   tegnforklaring står i topplinja, men bare når noen faktisk er krysset av.
 - **Elever uten tid står nederst på arket.** Det er dem læreren må ringe, og
   lista sto bare på skjermen.
+
+#### Lappene
+
+Ukeoversikten henges opp i klasserommet; **lappen går i sekken**. Derfor er den
+et eget ark — én rute per elev, tre i bredden på liggende A4, med stiplet ramme
+som klippelinje.
+
+- **Bare den ene samtalen står på hver lapp.** Lappen forlater skolen, og det
+  eneste barnet som skal stå på den er det som får den med seg. Ukeoversikten
+  med alle navnene er til veggen, ikke til sekken.
+- **Tider uten elev er ikke med.** En lapp som sier «ledig» har ingen å gå hjem
+  til. Merknadstider hører i kalenderen og på ukeoversikten.
+- **Bare ett av arkene ligger i dokumentet om gangen** (`printMode`). Ukearket
+  tas helt ut når lappene skrives ut, og skjules ikke med CSS: utskriftsreglene
+  finner det med `main:has([data-print-sheet])`, og `:has` bryr seg ikke om
+  `display`. Sto det igjen, fikk lappene arkets faste sidehøyde.
+- **Utskriften venter på tegningen.** `window.print()` rett i klikket ville tatt
+  bildet av sida slik den så ut *før* byttet, så læreren fikk ukeoversikten når
+  hen ba om lapper. Derfor settes utskriften i gang fra en effekt, og
+  tellersteget i `printJob` gjør at to trykk på samme knapp gir to utskrifter.
+- **Lappene har en minstehøyde.** Med høyden gitt av innholdet fikk en lapp med
+  merknad en centimeter mer enn naboen, og saksa måtte finne en ny linje for
+  hver rad.
+
+#### Kalenderfila
+
+`calendar.ts` skriver samtalene som `.ics`. Læreren lever i skolens kalender, og
+tjue avtaler skrevet inn for hånd er tjue sjanser til å bomme med en time.
+
+- **En fil, ikke en kobling.** En integrasjon mot Google eller Outlook ville
+  sendt elevnavn til en tjeneste, og dermed krevd databehandleravtale med hver
+  kommune — det `docs/personvern.md` sier appen ikke skal ha. Fila lages i
+  nettleseren og er lærerens eget dokument, som et utskrevet ark.
+- **Tidene står uten tidssone.** En samtale klokka 15 er klokka 15 på skolen. En
+  fil med sone i seg flytter tidene en time når klokka stilles mellom oppsettet
+  og samtalen.
+- **`UID` er tidas egen id**, så en ny nedlasting oppdaterer avtalen i kalenderen
+  i stedet for å legge en ny ved siden av.
+- **Linjene brytes på oktetter og ikke tegn** (`fold`). «Håkon» er fem tegn og
+  seks byte, og et brekk midt i et tegn gir rusk hos mottakeren.
+- **`saveTextToFile` tar en filtype.** Kalenderfila må ha `text/calendar` for å
+  åpne seg i kalenderprogrammet; med sikkerhetskopiens `application/json` ble
+  den bare lastet ned og lagt bort.
+
+#### Alle klassene i samme uke
+
+En kontaktlærer har gjerne to klasser med samtaler samme høst. Hvert oppsett har
+sin egen side, og der ser uka romslig ut — det er først når begge legges oppå
+hverandre at tirsdag ettermiddag viser seg å være full. Da har familien alt fått
+beskjed.
+
+- **`crossClashes` finner tider som kolliderer med et annet oppsett**, og
+  planleggeren viser hvilket: «Opptatt: 5B: Elevsamtaler». En rød ramme alene
+  ville sagt at noe er galt uten å si hvor læreren skal lete.
+- **Fanen «Alle klasser» er en ren lesevisning.** Tidene endres der de hører
+  hjemme. En redigering på tvers måtte svart på hvilket oppsett en ny tid skulle
+  havne i, og det spørsmålet har ikke noe godt svar.
+- **Oppsettene lastes globalt** (`fetchAllMeetingPlans` i `loadAll`), og klassens
+  egne utledes med `useMemo`. Ingen speilet kopi: et oppsett som lagres skal ikke
+  kunne stå med én tid i klassevisningen og en annen i oversikten.
+- **Klassene skilles med farge** (`--plan-1` … `--plan-5`). Uten den må læreren
+  lese klassenavnet på hver eneste linje. Fyllet er lyst, som setene i
+  klasserommet, så navnet kan stå i vanlig tekstfarge.
+- **Bare tider som gjelder noen vises.** Spørsmålet her er hva som er opptatt, og
+  tjue linjer som sier «ledig» ville skjult de fem som er avtalt.
 
 - **Egen side og ikke et vindu.** Skjemaet er en uke bredt, og læreren blir
   sittende i det en stund av gangen.

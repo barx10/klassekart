@@ -37,9 +37,29 @@ export class SaveCancelled extends Error {
   }
 }
 
+/**
+ * Filtypene appen lagrer. Sikkerhetskopien er hele datasettet; kalenderfila er
+ * samtaletidene, og den skal åpne seg i kalenderprogrammet når læreren
+ * dobbeltklikker den — derfor egen mediatype og ikke bare et annet navn.
+ */
+export type SaveKind = "backup" | "calendar";
+
+const KINDS: Record<SaveKind, { mime: string; description: string; extension: string }> = {
+  backup: {
+    mime: "application/json",
+    description: "Klassekart-sikkerhetskopi",
+    extension: ".json",
+  },
+  calendar: {
+    mime: "text/calendar",
+    description: "Kalenderfil",
+    extension: ".ics",
+  },
+};
+
 /** Den gamle veien: en usynlig lenke som klikkes, og fila havner i Nedlastinger. */
-function download(text: string, filename: string) {
-  const url = URL.createObjectURL(new Blob([text], { type: "application/json" }));
+function download(text: string, filename: string, mime: string) {
+  const url = URL.createObjectURL(new Blob([text], { type: mime }));
   const link = document.createElement("a");
   link.href = url;
   link.download = filename;
@@ -54,10 +74,15 @@ function download(text: string, filename: string) {
  * Lagrer teksten som fil. Kaster `SaveCancelled` hvis brukeren lukket
  * «Lagre som» — den som kaller skal da ikke vise noen feilmelding.
  */
-export async function saveTextToFile(text: string, filename: string): Promise<void> {
+export async function saveTextToFile(
+  text: string,
+  filename: string,
+  kind: SaveKind = "backup"
+): Promise<void> {
+  const { mime, description, extension } = KINDS[kind];
   const picker = (window as PickerWindow).showSaveFilePicker;
   if (!picker) {
-    download(text, filename);
+    download(text, filename, mime);
     return;
   }
 
@@ -65,18 +90,13 @@ export async function saveTextToFile(text: string, filename: string): Promise<vo
   try {
     handle = await picker({
       suggestedName: filename,
-      types: [
-        {
-          description: "Klassekart-sikkerhetskopi",
-          accept: { "application/json": [".json"] },
-        },
-      ],
+      types: [{ description, accept: { [mime]: [extension] } }],
     });
   } catch (e) {
     if (e instanceof DOMException && e.name === "AbortError") throw new SaveCancelled();
     // Nekter nettleseren å åpne vinduet — for eksempel i en innebygd ramme —
     // er en fil i Nedlastinger bedre enn ingen fil.
-    download(text, filename);
+    download(text, filename, mime);
     return;
   }
 

@@ -33,6 +33,10 @@ export default function MeetingsLayout({ children }: { children: React.ReactNode
   const base = `/klasser/${activeClass.id}/samtaler`;
   const tabs = [
     { href: base, label: "Planlegging" },
+    // «Alle klasser» hører hjemme ved siden av planlegginga og ikke inne i den:
+    // en kontaktlærer med to klasser setter opp den ene og må kunne slå opp den
+    // andre, uten å miste oppsettet hen står i.
+    { href: `${base}/alle`, label: "Alle klasser" },
     { href: `${base}/sporsmal`, label: "Forslag til spørsmål" },
   ];
 

@@ -2,6 +2,8 @@
 
 import { useEffect, useId, useMemo, useState } from "react";
 import { useAppData } from "@/lib/app-data";
+import { SaveCancelled, saveTextToFile } from "@/lib/backup-file";
+import { slotsToEvents, toIcs } from "@/lib/calendar";
 import { teacherKey } from "@/lib/local-db";
 import ConfirmDialog from "./ConfirmDialog";
 import HelpTip from "./HelpTip";
@@ -15,6 +17,7 @@ import {
   addDays,
   addSlots,
   clashingSlots,
+  crossClashes,
   datesOf,
   dayLabel,
   daysBetween,
@@ -160,7 +163,9 @@ export default function MeetingPlanner() {
   const {
     activeClass,
     activeStudents,
+    classes,
     meetingPlans,
+    allMeetingPlans,
     createMeetingPlan,
     saveMeetingPlan,
     deleteMeetingPlan,
@@ -173,6 +178,15 @@ export default function MeetingPlanner() {
   const [showNotes, setShowNotes] = useState(false);
   const [pendingDelete, setPendingDelete] = useState<MeetingPlan | null>(null);
   const [confirmRebuild, setConfirmRebuild] = useState(false);
+  /**
+   * Utskriften læreren ba om sist.
+   *
+   * Ukeoversikten og lappene er to helt ulike ark av de samme tidene, og bare
+   * ett av dem kan ligge i dokumentet når nettleseren tar bildet av sida.
+   * Tellersteget gjør at to trykk på samme knapp begge fører til en utskrift;
+   * uten det ville `useEffect` sett samme verdi og ikke gjort noe.
+   */
+  const [printJob, setPrintJob] = useState<{ mode: "uke" | "lapper"; n: number } | null>(null);
   // Feltene som har en hjelpetekst ved siden av seg må peke på feltet med
   // `htmlFor`. En <label> som omslutter både spørsmålstegnet og feltet gir
   // navnet sitt til knappen — den kommer først — og feltet blir stående uten.
@@ -326,6 +340,45 @@ export default function MeetingPlanner() {
   const sheetHeld = sheet.slots.some((s) => s.done);
 
   /**
+   * De andre samtaleoppsettene læreren har, i alle klasser.
+   *
+   * En kontaktlærer i to klasser setter dem opp hver for seg, men har bare én
+   * tirsdag. Etiketten er klassen og oppsettet, for «opptatt» uten å si av hva
+   * ber læreren lete seg gjennom de andre klassene selv.
+   */
+  const otherPlans = useMemo(() => {
+    if (!plan) return [];
+    return allMeetingPlans
+      .filter((m) => m.id !== plan.id)
+      .map((m) => ({
+        label: `${classes.find((c) => c.id === m.class_id)?.name ?? "annen klasse"}: ${
+          m.name || kindLabel(m.kind)
+        }`,
+        slots: m.slots,
+      }));
+  }, [allMeetingPlans, classes, plan]);
+
+  /**
+   * Lappene: én samtale per elev, i den rekkefølgen de skjer.
+   *
+   * Bare tider som er satt av til en elev. En merknadstid — «møte med PPT» —
+   * hører hjemme i lærerens kalender og på ukeoversikten, ikke i en sekk.
+   */
+  const notes = useMemo(
+    () =>
+      (plan?.slots ?? [])
+        .filter((slot) => slot.student_id)
+        .sort((a, b) => a.date.localeCompare(b.date) || toMinutes(a.start) - toMinutes(b.start)),
+    [plan]
+  );
+
+  /** Tider som kolliderer med en samtale i et annet oppsett, og hva de treffer. */
+  const crossed = useMemo(
+    () => crossClashes(plan?.slots ?? [], otherPlans),
+    [plan, otherPlans]
+  );
+
+  /**
    * Filnavnet utskriften foreslår.
    *
    * Nettleseren tar sidetittelen, og den sier «Klassekart» på alle sidene i
@@ -337,6 +390,49 @@ export default function MeetingPlanner() {
    * tittelen er ren DOM og krever ingen ny tegning fra React før nettleseren
    * tar bildet av sida.
    */
+  /**
+   * Skriver ut når læreren har valgt hvilket ark hen vil ha.
+   *
+   * Utskriften må vente på at React har tegnet det valgte arket: `window.print()`
+   * rett i klikket ville tatt bildet av sida slik den så ut *før* byttet, og
+   * læreren hadde fått ukeoversikten når hen ba om lapper. Effekten kjører etter
+   * tegningen, og der er arket på plass.
+   */
+  useEffect(() => {
+    if (!printJob) return;
+    window.print();
+  }, [printJob]);
+
+  /** Arket som ligger i dokumentet nå. Ukeoversikten er det vanlige. */
+  const printMode = printJob?.mode ?? "uke";
+
+  /**
+   * Samtalene som kalenderfil.
+   *
+   * Læreren lever i skolens kalender, ikke i Klassekart, og tjue avtaler skrevet
+   * inn for hånd er tjue sjanser til å bomme med en time. Fila lages her i
+   * nettleseren: en kobling mot Google eller Outlook ville sendt elevnavn til en
+   * tjeneste, og det er nettopp det appen ikke gjør.
+   */
+  async function downloadCalendar() {
+    if (!plan) return;
+    const events = slotsToEvents(
+      plan.slots,
+      plan.kind,
+      activeClass?.name ?? "",
+      (id) => byId.get(id)?.name ?? UNKNOWN
+    );
+    if (events.length === 0) return;
+    const navn = printFileName(plan.kind, activeClass?.name ?? "");
+    try {
+      await saveTextToFile(toIcs(events, navn), `${navn}.ics`, "calendar");
+    } catch (e) {
+      // Lukker læreren «Lagre som» uten å velge noe, er det ikke en feil.
+      if (e instanceof SaveCancelled) return;
+      setError(e instanceof Error ? e.message : String(e));
+    }
+  }
+
   useEffect(() => {
     if (!plan) return;
     const utskriftsnavn = printFileName(plan.kind, activeClass?.name ?? "");
@@ -627,17 +723,23 @@ export default function MeetingPlanner() {
               // ha flyttet en samtale som faktisk har vært.
               const done = slot.done;
               const holdt = `Samtalen ${slot.start} ${label} er holdt`;
+              // Hva tida kolliderer med i en annen klasse. Ramma holdes lik den
+              // vanlige kollisjonen, men uten fyll: den andre samtalen ligger
+              // ikke i dette oppsettet, og er ikke noe læreren kan rette her.
+              const opptatt = crossed.get(slot.id);
               return (
                 <li
                   key={slot.id}
                   className={`flex flex-col gap-1 rounded-lg border px-2 py-1.5 ${
                     clashes.has(slot.id)
                       ? "border-danger bg-danger-soft"
-                      : done
-                        ? "border-accent/40 bg-accent-soft"
-                        : slot.student_id
-                          ? "border-border bg-surface-raised"
-                          : "border-dashed border-border bg-surface-raised"
+                      : opptatt
+                        ? "border-danger bg-surface-raised"
+                        : done
+                          ? "border-accent/40 bg-accent-soft"
+                          : slot.student_id
+                            ? "border-border bg-surface-raised"
+                            : "border-dashed border-border bg-surface-raised"
                   }`}
                 >
                   <div className="flex items-center gap-1">
@@ -753,6 +855,15 @@ export default function MeetingPlanner() {
                       aria-label={`Merknad ${slot.start} ${label}`}
                       className={inputClassSm}
                     />
+                  )}
+
+                  {/* Hvilket oppsett tida krasjer med står på tida selv. En
+                      rød ramme alene ville fortalt at noe er galt uten å si
+                      hvor læreren skal lete. */}
+                  {opptatt && (
+                    <p className="text-[11px] leading-tight text-danger">
+                      Opptatt: {opptatt.join(", ")}
+                    </p>
                   )}
                 </li>
               );
@@ -1164,6 +1275,46 @@ export default function MeetingPlanner() {
             </span>
           </div>
 
+          {/* --- Ut av appen ---
+              Tre veier ut av de samme tidene, samlet ett sted fordi de gjøres i
+              samme åndedrag når uka er satt opp: arket på veggen, lappene hjem,
+              og avtalene i lærerens egen kalender. */}
+          {usedSlots > 0 && (
+            <div
+              data-print-hide
+              className="flex flex-wrap items-center gap-2 border-t border-border pt-3"
+            >
+              <span className="text-xs text-subtle">Ta med ut</span>
+              <button
+                type="button"
+                onClick={() => setPrintJob((j) => ({ mode: "uke", n: (j?.n ?? 0) + 1 }))}
+                title="Hele runden på ett ark, til veggen i klasserommet"
+                className={secondaryButton("sm")}
+              >
+                Skriv ut ukeoversikt
+              </button>
+              <button
+                type="button"
+                onClick={() => setPrintJob((j) => ({ mode: "lapper", n: (j?.n ?? 0) + 1 }))}
+                title="En lapp per elev, til å klippe fra hverandre og sende hjem"
+                className={secondaryButton("sm")}
+              >
+                Skriv ut lapper
+              </button>
+              <button
+                type="button"
+                onClick={downloadCalendar}
+                title="Samtalene som kalenderfil, til å åpne i din egen kalender. Ingenting sendes noe sted."
+                className={secondaryButton("sm")}
+              >
+                Last ned kalenderfil
+              </button>
+              <span className="text-xs text-subtle">
+                Lappene og kalenderfila tar med {plural(usedSlots, "samtale", "samtaler")}.
+              </span>
+            </div>
+          )}
+
           {/* Skjemaet peker et annet sted enn tidene ligger. Det er lov — nye
               tider kan godt lages i uka etter — men det skal ikke være noe
               læreren må gjette seg til av to ukenumre som ikke stemmer. */}
@@ -1219,6 +1370,22 @@ export default function MeetingPlanner() {
               className="rounded-lg border border-danger/40 bg-danger-soft px-3 py-1.5 text-xs text-danger"
             >
               To eller flere tider ligger oppå hverandre. De er merket med rødt under.
+            </p>
+          )}
+
+          {/* Kollisjon med en annen klasse er den læreren ikke kan se noe sted:
+              oppsettene settes opp hver for seg, men kontaktlæreren har bare én
+              tirsdag. Varselet står her, over tidene, og navnet på det andre
+              oppsettet står på tida selv. */}
+          {crossed.size > 0 && (
+            <p
+              role="status"
+              data-print-hide
+              className="rounded-lg border border-danger/40 bg-danger-soft px-3 py-1.5 text-xs text-danger"
+            >
+              {plural(crossed.size, "tid ligger", "tider ligger")} oppå en samtale i et annet
+              oppsett. De er merket under, med hvilket. Hele bildet står i{" "}
+              <strong>Alle klasser</strong>.
             </p>
           )}
 
@@ -1323,7 +1490,13 @@ export default function MeetingPlanner() {
               boks en tett liste — «Anna Oline: 10:15–10:45». Hver tid hadde en
               rute for seg før, og da tok fem samtaler hele siden uten å si mer
               enn fem linjer gjør. Liggende A4 er gitt av utskriftsreglene, og
-              det er formatet en uke skal leses i. --- */}
+              det er formatet en uke skal leses i.
+
+              Blokka tas helt ut av dokumentet når lappene skal skrives ut, og
+              skjules ikke bare med CSS: utskriftsreglene finner arket med
+              `main:has([data-print-sheet])`, og `:has` bryr seg ikke om
+              `display`. Sto den igjen, ville lappene fått arkets sidehøyde. --- */}
+          {printMode === "uke" && (
           <div
             data-print-sheet
             className="hidden print:flex print:flex-col"
@@ -1425,6 +1598,54 @@ export default function MeetingPlanner() {
               </p>
             )}
           </div>
+          )}
+
+          {/* --- Lappene. En rute per elev, til å klippe fra hverandre og
+              sende hjem.
+
+              Ukeoversikten henges opp; lappen går i sekken. Derfor står bare
+              den ene samtalen på hver: dagen, datoen, klokkeslettet og
+              klassen. Ingen andre elevers navn — lappen forlater skolen, og
+              det eneste barnet som skal stå på den er det som får den med seg.
+
+              Tider uten elev er ikke med. En lapp som sier «ledig» har ingen
+              å gå hjem til. --- */}
+          {printMode === "lapper" && (
+            <div data-print-notes className="hidden print:grid print:grid-cols-3 print:gap-2">
+              {notes.map((slot) => (
+                <article
+                  key={slot.id}
+                  // Stiplet ramme er klippelinja. Hel ramme så ut som en
+                  // innramming av lappen, og da klippet lærerne rundt den.
+                  // Lappene får samme høyde, så klippelinjene står i rett
+                  // linje tvers over arket. Med høyden gitt av innholdet fikk
+                  // en lapp med merknad en centimeter mer enn naboen, og saksa
+                  // måtte finne en ny linje for hver rad.
+                  className="flex min-h-[3.4cm] break-inside-avoid flex-col gap-1 rounded border border-dashed border-foreground/50 p-3"
+                >
+                  <p className="text-[10px] uppercase tracking-wide text-muted">
+                    {kindLabel(plan.kind)}
+                    {activeClass?.name ? ` · ${activeClass.name}` : ""}
+                  </p>
+                  <p className="text-base font-bold leading-tight">
+                    {byId.get(slot.student_id ?? "")?.name ?? UNKNOWN}
+                  </p>
+                  <p className="text-sm leading-tight">
+                    {dayLabel(slot.date)} · {weekLabel(slot.date).toLowerCase()}
+                  </p>
+                  <p className="text-lg font-bold tabular-nums leading-tight">
+                    {slot.start}–{slotEnd(slot)}
+                  </p>
+                  {slot.note.trim() && (
+                    <p className="text-xs leading-snug text-muted">{slot.note.trim()}</p>
+                  )}
+                  {plan.teacher.trim() && (
+                    <p className="mt-auto pt-1 text-[10px] text-muted">{plan.teacher}</p>
+                  )}
+                </article>
+              ))}
+            </div>
+          )}
         </>
       )}
 
