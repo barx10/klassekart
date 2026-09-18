@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo } from "react";
 import { useAppData } from "@/lib/app-data";
 import {
   dayLabel,
@@ -49,8 +49,8 @@ interface Entry {
 }
 
 export default function MeetingOverview() {
-  const { classes, studentsByClass, allMeetingPlans } = useAppData();
-  const [hidden, setHidden] = useState<Set<string>>(new Set());
+  const { classes, studentsByClass, allMeetingPlans, ignoredPlans, toggleIgnoredPlan } =
+    useAppData();
 
   /** Alle elevnavn, på tvers av klasser: tidene her kommer fra flere av dem. */
   const nameOf = useMemo(() => {
@@ -74,7 +74,16 @@ export default function MeetingOverview() {
     [allMeetingPlans, classes]
   );
 
-  const shown = useMemo(() => plans.filter((p) => !hidden.has(p.plan.id)), [plans, hidden]);
+  /**
+   * Oppsettene som er huket på. Avhukinga er delt med planlegginga: haker
+   * læreren bort 5B her, skal hverken fordelingen eller kollisjonsvarselet der
+   * regne 5B som opptatt tid. Før lå valget bare her, og da sto varselet igjen
+   * på den andre fanen som om ingenting var gjort.
+   */
+  const shown = useMemo(
+    () => plans.filter((p) => !ignoredPlans.has(p.plan.id)),
+    [plans, ignoredPlans]
+  );
 
   /**
    * Alle tidene i utvalget, som rader.
@@ -131,15 +140,6 @@ export default function MeetingOverview() {
 
   const clashCount = entries.filter((e) => e.clash).length;
 
-  function toggle(id: string) {
-    setHidden((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
-    });
-  }
-
   if (plans.length === 0) {
     return (
       <p className="text-sm text-muted">
@@ -160,7 +160,7 @@ export default function MeetingOverview() {
           lista er både filter og tegnforklaring. */}
       <div data-print-hide className="flex flex-wrap items-center gap-2">
         {plans.map(({ plan, color, className }) => {
-          const på = !hidden.has(plan.id);
+          const på = !ignoredPlans.has(plan.id);
           return (
             <label
               key={plan.id}
@@ -173,7 +173,7 @@ export default function MeetingOverview() {
               <input
                 type="checkbox"
                 checked={på}
-                onChange={() => toggle(plan.id)}
+                onChange={() => toggleIgnoredPlan(plan.id)}
                 className="h-3.5 w-3.5 accent-[var(--accent)]"
               />
               <span className="font-medium">{className}</span>

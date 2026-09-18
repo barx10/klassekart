@@ -119,6 +119,19 @@ interface AppDataValue {
    * og 5B usynlig helt til begge familiene står i gangen.
    */
   allMeetingPlans: MeetingPlan[];
+  /**
+   * Oppsettene læreren har haket bort. De teller ikke som opptatt tid: verken
+   * fordelingen, kollisjonsvarselet eller «Alle klasser» ser dem.
+   *
+   * Valget er **delt** mellom planleggeren og oversikten med vilje. Det lå før
+   * bare i «Alle klasser», og da haket læreren bort en klasse der, gikk tilbake
+   * til planlegginga — og fikk fortsatt vite at tidene lå oppå en annen avtale.
+   *
+   * Det er et blikk på uka og ikke en innstilling, så det lagres ikke: en
+   * kollisjon læreren har sett bort fra i dag skal være synlig igjen i morgen.
+   */
+  ignoredPlans: Set<string>;
+  toggleIgnoredPlan: (id: string) => void;
   /** Lager et nytt oppsett med standardskjemaet, og lagrer det med én gang. */
   createMeetingPlan: (kind: MeetingKind) => Promise<MeetingPlan>;
   /** Lagrer et helt oppsett — skjemaet og tidene i samme skriv. */
@@ -159,6 +172,7 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
   const [apartPairs, setApartPairs] = useState<ApartPair[]>([]);
   const [groupSets, setGroupSets] = useState<GroupSet[]>([]);
   const [allMeetingPlans, setAllMeetingPlans] = useState<MeetingPlan[]>([]);
+  const [ignoredPlans, setIgnoredPlans] = useState<Set<string>>(new Set());
   const [loadedClassId, setLoadedClassId] = useState<string | null>(null);
   const [generating, setGenerating] = useState(false);
   // Teller opp når lagringen er byttet ut under føttene på oss (import), slik
@@ -632,6 +646,16 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
     }
   }, [activeClassId, desks, deskCols]);
 
+  /** Haker et oppsett av eller på i kollisjonssjekken og i «Alle klasser». */
+  const toggleIgnoredPlan = useCallback((id: string) => {
+    setIgnoredPlans((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }, []);
+
   const value = useMemo(
     () => ({
       classes,
@@ -671,6 +695,8 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
       deleteGroupSet,
       meetingPlans,
       allMeetingPlans,
+      ignoredPlans,
+      toggleIgnoredPlan,
       createMeetingPlan,
       saveMeetingPlan,
       deleteMeetingPlan,
@@ -718,6 +744,8 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
       deleteGroupSet,
       meetingPlans,
       allMeetingPlans,
+      ignoredPlans,
+      toggleIgnoredPlan,
       createMeetingPlan,
       saveMeetingPlan,
       deleteMeetingPlan,

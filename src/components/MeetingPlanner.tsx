@@ -16,8 +16,9 @@ import {
   WEEKDAYS,
   addDays,
   addSlots,
+  busySlots,
   clashingSlots,
-  crossClashes,
+  crossBusy,
   datesOf,
   dayLabel,
   daysBetween,
@@ -166,6 +167,8 @@ export default function MeetingPlanner() {
     classes,
     meetingPlans,
     allMeetingPlans,
+    ignoredPlans,
+    toggleIgnoredPlan,
     createMeetingPlan,
     saveMeetingPlan,
     deleteMeetingPlan,
@@ -349,14 +352,33 @@ export default function MeetingPlanner() {
   const otherPlans = useMemo(() => {
     if (!plan) return [];
     return allMeetingPlans
-      .filter((m) => m.id !== plan.id)
+      .filter((m) => m.id !== plan.id && m.slots.some((s) => s.student_id || s.note.trim()))
       .map((m) => ({
+        id: m.id,
         label: `${classes.find((c) => c.id === m.class_id)?.name ?? "annen klasse"}: ${
           m.name || kindLabel(m.kind)
         }`,
         slots: m.slots,
       }));
   }, [allMeetingPlans, classes, plan]);
+
+  /**
+   * De av dem læreren faktisk regner med. Avhukinga er delt med «Alle klasser»,
+   * så en klasse som er haket bort der er borte her også — før satt varselet
+   * igjen på denne sida og påsto at tidene lå oppå en avtale læreren nettopp
+   * hadde sagt fra seg.
+   */
+  const countedPlans = useMemo(
+    () => otherPlans.filter((m) => !ignoredPlans.has(m.id)),
+    [otherPlans, ignoredPlans]
+  );
+
+  /**
+   * Tidene læreren er opptatt i de andre oppsettene. Fordelingen tar dem imot
+   * og lar tidene som ligger oppå dem stå ledige — en kontaktlærer med to
+   * klasser kan bare være ett sted tirsdag klokka 15.
+   */
+  const busyTimes = useMemo(() => busySlots(countedPlans), [countedPlans]);
 
   /**
    * Lappene: én samtale per elev, i den rekkefølgen de skjer.
@@ -372,10 +394,26 @@ export default function MeetingPlanner() {
     [plan]
   );
 
-  /** Tider som kolliderer med en samtale i et annet oppsett, og hva de treffer. */
+  /**
+   * Tider som ligger oppå en samtale i et annet oppsett, og hva de treffer.
+   * Ledige tider er med: de er ikke en feil, men de er opptatt, og fordelingen
+   * hopper over dem.
+   */
   const crossed = useMemo(
-    () => crossClashes(plan?.slots ?? [], otherPlans),
-    [plan, otherPlans]
+    () => crossBusy(plan?.slots ?? [], countedPlans),
+    [plan, countedPlans]
+  );
+
+  /**
+   * De av dem som gjelder noen — kollisjonene læreren må rette. En ledig tid
+   * som er opptatt et annet sted er ingenting å varsle om; den står bare der.
+   */
+  const crossedUsed = useMemo(
+    () =>
+      (plan?.slots ?? []).filter(
+        (s) => (s.student_id || s.note.trim()) && crossed.has(s.id)
+      ),
+    [plan, crossed]
   );
 
   /**
@@ -522,7 +560,7 @@ export default function MeetingPlanner() {
   function rebuild() {
     if (!plan) return;
     setConfirmRebuild(false);
-    update({ ...plan, slots: rebuildSlots(plan) });
+    update({ ...plan, slots: rebuildSlots(plan, busyTimes) });
   }
 
   /**
@@ -541,9 +579,18 @@ export default function MeetingPlanner() {
     update({ ...plan, slots: pending });
   }
 
+  /**
+   * Setter elevene inn i de ledige tidene — og hopper over dem læreren alt er
+   * opptatt i en annen klasse. Fordelingen så før bare sitt eget oppsett, og
+   * satte glatt en familie i 7A oppå en i 5B; kollisjonen kom fram etterpå, som
+   * et varsel om noe som allerede var avtalt.
+   */
   function distribute() {
     if (!plan) return;
-    update({ ...plan, slots: fillSlots(plan.slots, students.map((s) => s.id)) });
+    update({
+      ...plan,
+      slots: fillSlots(plan.slots, students.map((s) => s.id), busyTimes),
+    });
   }
 
   /**
@@ -727,13 +774,18 @@ export default function MeetingPlanner() {
               // vanlige kollisjonen, men uten fyll: den andre samtalen ligger
               // ikke i dette oppsettet, og er ikke noe læreren kan rette her.
               const opptatt = crossed.get(slot.id);
+              // Rødt bare når tida gjelder noen: da er det to samtaler på én
+              // lærer, og noe å rette. En ledig tid som er opptatt i en annen
+              // klasse er ingen feil — den er bare ikke å bruke, og fordelingen
+              // lar den stå.
+              const kollisjon = Boolean(opptatt) && Boolean(slot.student_id || slot.note.trim());
               return (
                 <li
                   key={slot.id}
                   className={`flex flex-col gap-1 rounded-lg border px-2 py-1.5 ${
                     clashes.has(slot.id)
                       ? "border-danger bg-danger-soft"
-                      : opptatt
+                      : kollisjon
                         ? "border-danger bg-surface-raised"
                         : done
                           ? "border-accent/40 bg-accent-soft"
@@ -861,7 +913,11 @@ export default function MeetingPlanner() {
                       rød ramme alene ville fortalt at noe er galt uten å si
                       hvor læreren skal lete. */}
                   {opptatt && (
-                    <p className="text-[11px] leading-tight text-danger">
+                    <p
+                      className={`text-[11px] leading-tight ${
+                        kollisjon ? "text-danger" : "text-muted"
+                      }`}
+                    >
                       Opptatt: {opptatt.join(", ")}
                     </p>
                   )}
@@ -1377,16 +1433,49 @@ export default function MeetingPlanner() {
               oppsettene settes opp hver for seg, men kontaktlæreren har bare én
               tirsdag. Varselet står her, over tidene, og navnet på det andre
               oppsettet står på tida selv. */}
-          {crossed.size > 0 && (
+          {crossedUsed.length > 0 && (
             <p
               role="status"
               data-print-hide
               className="rounded-lg border border-danger/40 bg-danger-soft px-3 py-1.5 text-xs text-danger"
             >
-              {plural(crossed.size, "tid ligger", "tider ligger")} oppå en samtale i et annet
+              {plural(crossedUsed.length, "tid ligger", "tider ligger")} oppå en samtale i et annet
               oppsett. De er merket under, med hvilket. Hele bildet står i{" "}
               <strong>Alle klasser</strong>.
             </p>
+          )}
+
+          {/* Hvilke andre oppsett som regnes som opptatt tid. Lista står her,
+              ved tidene og fordelinga den styrer, og ikke bare i «Alle klasser»:
+              det var der læreren haket bort en klasse og kom tilbake hit til det
+              samme varselet. Avhukinga er den samme de to stedene. */}
+          {otherPlans.length > 0 && (
+            <div data-print-hide className="flex flex-col gap-1.5">
+              <p className="text-xs text-muted">
+                Tar hensyn til disse rundene: fordelingen hopper over tidene du er opptatt i
+                dem.
+              </p>
+              <div className="flex flex-wrap items-center gap-2">
+                {otherPlans.map((other) => (
+                  <label
+                    key={other.id}
+                    className={`flex cursor-pointer items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-xs ${
+                      ignoredPlans.has(other.id)
+                        ? "border-border text-muted"
+                        : "border-accent/40 bg-accent-soft"
+                    }`}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={!ignoredPlans.has(other.id)}
+                      onChange={() => toggleIgnoredPlan(other.id)}
+                      className="h-3.5 w-3.5 accent-[var(--accent)]"
+                    />
+                    {other.label}
+                  </label>
+                ))}
+              </div>
+            </div>
           )}
 
           {/* --- Ukene --- */}
