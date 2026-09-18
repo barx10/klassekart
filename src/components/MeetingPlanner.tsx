@@ -24,6 +24,7 @@ import {
   mondayOf,
   newSlotId,
   nextWeekday,
+  printFileName,
   rangeLabel,
   rebuildSlots,
   shiftSlots,
@@ -320,6 +321,42 @@ export default function MeetingPlanner() {
 
     return { slots, weeks, font, span };
   }, [plan]);
+
+  /** Om noen samtale er holdt. Styrer tegnforklaringa på arket. */
+  const sheetHeld = sheet.slots.some((s) => s.done);
+
+  /**
+   * Filnavnet utskriften foreslår.
+   *
+   * Nettleseren tar sidetittelen, og den sier «Klassekart» på alle sidene i
+   * appen. Læreren som lagrer samtalerunden som PDF satt igjen med en fil hen
+   * ikke kunne kjenne igjen. Tittelen byttes derfor i `beforeprint` og settes
+   * tilbake i `afterprint`.
+   *
+   * Det er trygt her, til forskjell fra å måle om lerretet i samme lytter:
+   * tittelen er ren DOM og krever ingen ny tegning fra React før nettleseren
+   * tar bildet av sida.
+   */
+  useEffect(() => {
+    if (!plan) return;
+    const utskriftsnavn = printFileName(plan.kind, activeClass?.name ?? "");
+    let forrige = "";
+    const before = () => {
+      forrige = document.title;
+      document.title = utskriftsnavn;
+    };
+    const after = () => {
+      if (forrige) document.title = forrige;
+      forrige = "";
+    };
+    window.addEventListener("beforeprint", before);
+    window.addEventListener("afterprint", after);
+    return () => {
+      window.removeEventListener("beforeprint", before);
+      window.removeEventListener("afterprint", after);
+      after();
+    };
+  }, [plan, activeClass]);
 
   const clashes = useMemo(() => clashingSlots(plan?.slots ?? []), [plan]);
   const unplaced = useMemo(
@@ -1300,6 +1337,9 @@ export default function MeetingPlanner() {
                 {plan.teacher.trim() ? `${plan.teacher} · ` : ""}
                 {plural(plan.minutes, "minutt", "minutter")} per samtale
                 {sheet.span ? ` · ${sheet.span}` : ""}
+                {/* Tegnforklaringa står bare når den trengs: et «✓ = hatt» over
+                    en runde ingen har krysset av i er en linje som forvirrer. */}
+                {sheetHeld ? " · ✓ = hatt" : ""}
               </p>
             </header>
 
@@ -1342,6 +1382,19 @@ export default function MeetingPlanner() {
                               key={slot.id}
                               className="truncate py-[0.12em] text-[1em] leading-tight"
                             >
+                              {/* Haken «Hatt» sto bare på skjermen, og det er
+                                  nettopp den lista læreren tar med seg inn i
+                                  samtaleuka: hen må kunne se hvem som gjenstår
+                                  uten å ha maskinen oppe. Merket får sin egen
+                                  kolonne — står det rett foran navnet, kommer
+                                  navnene i ulik avstand fra kanten og lista blir
+                                  tyngre å lese enn den tjener på. */}
+                              <span
+                                aria-hidden="true"
+                                className="inline-block w-[1.1em] font-bold"
+                              >
+                                {slot.done ? "✓" : ""}
+                              </span>
                               {hvem && <span className="font-medium">{hvem}: </span>}
                               <span className="tabular-nums">
                                 {slot.start}–{slotEnd(slot)}
