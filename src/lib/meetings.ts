@@ -79,6 +79,27 @@ export function kindLabel(kind: MeetingKind): string {
   return MEETING_KINDS.find((k) => k.kind === kind)?.label ?? "Samtale";
 }
 
+/**
+ * Navnet utskriften skal hete.
+ *
+ * Nettleseren foreslår sidetittelen som filnavn når læreren lagrer arket som
+ * PDF, og en tittel som bare sier «Klassekart» gir en mappe full av filer som
+ * ikke er til å skille fra hverandre. Typen og klassen er det som skiller dem:
+ * elevsamtalene i 7A er en annen runde enn utviklingssamtalene i 7A.
+ *
+ * Tegnene som ikke kan stå i et filnavn byttes ut her. Uten det ville Windows
+ * kappet navnet ved det første av dem, og en klasse som heter «7A/7B» hadde
+ * gitt en fil som het «7A».
+ */
+export function printFileName(kind: MeetingKind, className: string): string {
+  const navn = [kindLabel(kind), className.trim()]
+    .filter(Boolean)
+    .join(" ")
+    .replace(/[\\/:*?"<>|]/g, "-")
+    .trim();
+  return navn || kindLabel(kind);
+}
+
 export function defaultMinutes(kind: MeetingKind): number {
   return MEETING_KINDS.find((k) => k.kind === kind)?.minutes ?? 20;
 }

@@ -414,6 +414,17 @@ linjer gjør.
   foresatte skal vite. En merknad på en tid som *også* har en elev — «på Teams»,
   «tolk» — står i parentes etter tida, og en tid som bare er en merknad står med
   merknaden som navn.
+- **Filnavnet er typen og klassen** (`printFileName`). Nettleseren foreslår
+  sidetittelen når læreren lagrer arket som PDF, og «Klassekart» på hver eneste
+  fil gjorde dem umulige å skille: elevsamtalene i 7A er en annen runde enn
+  utviklingssamtalene i 7A. Tittelen byttes i `beforeprint` og settes tilbake i
+  `afterprint` — ren DOM, så det krever ingen ny tegning fra React før
+  nettleseren tar bildet av sida, slik en ommåling i samme lytter ville gjort.
+- **Holdte samtaler er merket med hake på arket.** Haken «Hatt» sto bare på
+  skjermen, men det er papiret læreren har med seg inn i samtaleuka — hen må
+  kunne se hvem som gjenstår uten maskinen oppe. Merket får sin egen kolonne
+  foran navnet, ellers ville navnene stått i ulik avstand fra kanten. En
+  tegnforklaring står i topplinja, men bare når noen faktisk er krysset av.
 - **Elever uten tid står nederst på arket.** Det er dem læreren må ringe, og
   lista sto bare på skjermen.
 
