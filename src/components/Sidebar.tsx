@@ -478,6 +478,29 @@ export default function Sidebar({ open, hidden, onClose, onHide, onAbout }: Prop
               )}
             </Link>
 
+            {/* Klasselista er et ark læreren skriver ut og går fra — til turen,
+                til vikaren, til opptellinga — så den er en egen side som kan
+                bokmerkes, og ikke et vindu inne i klasserommet. */}
+            <Link
+              href={`/klasser/${activeClass.id}/klasseliste`}
+              onClick={onClose}
+              aria-current={
+                pathname === `/klasser/${activeClass.id}/klasseliste` ? "page" : undefined
+              }
+              className={`mt-1 flex w-full items-center gap-1.5 rounded-md px-2 py-2 text-left text-sm font-medium ${
+                pathname === `/klasser/${activeClass.id}/klasseliste`
+                  ? "bg-accent-soft text-accent-text"
+                  : "hover:bg-background"
+              }`}
+            >
+              <svg viewBox="0 0 16 16" className="h-3.5 w-3.5 shrink-0 text-subtle" fill="none" stroke="currentColor" strokeWidth="1.5" aria-hidden>
+                <rect x="1.75" y="2.75" width="4" height="4" rx="1" />
+                <rect x="1.75" y="9.25" width="4" height="4" rx="1" />
+                <path d="M7.75 4.75h6.5M7.75 11.25h6.5" strokeLinecap="round" />
+              </svg>
+              <span className="flex-1">Klasseliste</span>
+            </Link>
+
             {/* Egne knapper, ikke seksjoner: de åpner et vindu i stedet for å
                 folde ut noe her — derfor ingen chevron. */}
             <button

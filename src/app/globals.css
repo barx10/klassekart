@@ -345,6 +345,28 @@ body {
     break-inside: avoid;
   }
 
+  /* Klasselista er den ene sida som skal stå stående. En navneliste er høy og
+     smal: på et liggende ark blir linja mellom navnet og avkrysningsruta så
+     lang at øyet mister raden på veien, og to tredeler av arket står tomt.
+     Formatet byttes med et navngitt ark i stedet for å snu `@page` for alle —
+     klassekartet og samtalearket trenger fortsatt bredden. Kjenner ikke
+     nettleseren `page`, skrives lista liggende, og da er det bredden på selve
+     arket (190 mm) som holder linjene samlet midt på sida. */
+  @page klasseliste {
+    size: A4 portrait;
+    margin: 6mm;
+  }
+
+  [data-print-list] {
+    page: klasseliste;
+  }
+
+  /* Bunnteksten hører ikke hjemme på en liste med elevnavn, og «Lærerliv ©
+     2026» under siste navn stjeler den linja lista trenger for å bli ett ark. */
+  body:has([data-print-list]) footer {
+    display: none !important;
+  }
+
   /* Liggende ark: et klasserom er bredere enn det er dypt, og stående A4 ga et
      kart som enten ble knøttlite eller klippet ved høyre marg. Samtalearket er
      en uke på fem dager, og trenger den samme bredden. */
