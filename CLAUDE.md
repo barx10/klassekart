@@ -48,6 +48,7 @@ src/
     klasser/[classId]/samtaler/ Samtalene: planlegging (page), alle klasser i
                                 én uke (alle) og forslag til spørsmål
                                 (sporsmal), med fanene i layout
+    klasser/[classId]/klasseliste/  Klasselista til utskrift, med avkryssing
     personvern/page.tsx         Personvernsiden læreren kan vise fram
   components/
     Sidebar.tsx                 Klasser, elever, tidligere kart, par-oversikt
@@ -58,6 +59,7 @@ src/
     MeetingPlanner.tsx          Samtaleuka: skjema, tider og hvem som får dem
     MeetingOverview.tsx         Alle klassenes samtaler i samme uke (lesevisning)
     MeetingQuestions.tsx        Forslag til spørsmål i de to samtaletypene
+    ClassList.tsx               Klasselista: navn, nummer og ruter å krysse av i
     StudentManager.tsx          Legg til/rediger elever (kompakt, for menyen)
     PairHeatmap.tsx             Varmekart over hvem som har sittet sammen
     ContactTeachers.tsx         Kontaktlærerne, og elevene hver av dem har
@@ -281,6 +283,37 @@ som ikke skal sitte sammen gjelder også her.
 - **Flagget som skiller drag fra klikk nullstilles ved `pointerdown`**, ikke i
   klikket. Slippes navnet utenfor knappen det ble tatt fra, kommer det aldri
   noe klikk — og det neste ekte klikket ville blitt spist.
+
+### Klasselista
+
+Lista er navnene i klassen på ett ark, med ruter å krysse av i: den læreren har
+i handa ved bussdøra, gir til vikaren, eller teller hoder med på tur.
+
+- **Den er ikke klassekartet med pultene skrudd av.** Rekkefølgen er alfabetisk
+  og ikke romlig, og det eneste arket trenger er nummer, navn og en rute stor
+  nok til en penn. Nummereringen er nettopp til opptellinga: den som teller ved
+  bussen sammenligner med det siste tallet i lista.
+- **Arket er stående A4**, som det eneste i appen. En navneliste er høy og smal,
+  og på et liggende ark blir linja mellom navnet og ruta så lang at øyet mister
+  raden på veien. Formatet byttes med et navngitt ark (`@page klasseliste` +
+  `page:` på lerretet) i stedet for å snu `@page` for alle — klassekartet og
+  samtalearket trenger fortsatt bredden. Kjenner ikke nettleseren `page`, kommer
+  lista liggende, og da er det bredden på selve arket som holder linjene samlet.
+- **Skjermen viser arket slik det blir på papiret.** Alle mål er `em` over en
+  skriftstørrelse regnet ut av hvor mange elever lista har, slik samtalearket
+  gjør det, så forhåndsvisninga er utskriften. To sett med markup — ett for
+  skjerm og ett for print — ville før eller siden kommet fra hverandre.
+- **Lista skal være ett ark.** Det er skrifta som gir etter når klassen er stor:
+  en vanlig klasse ligger på taket (12 px) og ser lik ut fra klasse til klasse,
+  og det er først over rundt femti navn at arket må ta en side til. Tallene i
+  utregningen er målt på arket og runder oppover — en linje for mye gir en blank
+  side to, en for lite gir bare litt luft nederst.
+- **Anledninga og rute-overskriftene lagres ikke.** En klasseliste skrives ut til
+  en tur og er ikke en innstilling klassen skal bære med seg. Første ruta heter
+  «Til stede», for det er den vanlige turen; en tur med buss både ut og hjem
+  trenger to, og da må rutene ha navn.
+- **Datoen skrives for hånd.** Den samme lista brukes gjerne om igjen neste tur,
+  og en dato trykt på arket gjør den til søppel.
 
 ### Samtaler
 
