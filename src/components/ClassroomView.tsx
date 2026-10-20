@@ -47,8 +47,6 @@ interface Props {
   desks: Desk[];
   assignments: DeskAssignments;
   studentsById: Map<string, Student>;
-  /** Datoen kartet ble laget, vist ved siden av klassenavnet. */
-  chartDate?: string;
   onClose: () => void;
 }
 
@@ -57,7 +55,6 @@ export default function ClassroomView({
   desks,
   assignments,
   studentsById,
-  chartDate,
   onClose,
 }: Props) {
   const [area, setArea] = useState<{ width: number; height: number } | null>(null);
@@ -143,10 +140,9 @@ export default function ClassroomView({
       className="fixed inset-0 z-50 flex flex-col bg-background p-4"
     >
       <div className="mb-2 flex items-center justify-between gap-4">
-        <div className="min-w-0">
-          <h2 className="truncate text-xl font-bold">{className}</h2>
-          {chartDate && <p className="text-xs text-subtle">Klassekart {chartDate}</p>}
-        </div>
+        {/* Ingen dato: kartet lages gjerne i forkant, og datoen det ble laget
+            stemmer sjelden med dagen det vises. */}
+        <h2 className="min-w-0 truncate text-xl font-bold">{className}</h2>
         <button
           type="button"
           onClick={onClose}
