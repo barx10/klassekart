@@ -1,16 +1,17 @@
 "use client";
 
 import { mutate, newId, read, teacherKey, type LocalData } from "./local-db";
-import { clampSeats, ensureCapacity, makeGrid, validLocks } from "./classroom";
+import { clampSeats, ensureCapacity, frontDeskIds, makeGrid, validLocks } from "./classroom";
 import { buildSlots, defaultPlan, kindLabel } from "./meetings";
 import {
-  apartViolations,
   buildHistoryMap,
   countNewPairs,
   generateSeatingChart,
   groupSizes,
   pairKey as canonicalPairKey,
   pairsFromGroups,
+  ruleBreaks,
+  type RuleBreak,
 } from "./seating";
 import type {
   ApartPair,
@@ -22,6 +23,7 @@ import type {
   MeetingKind,
   MeetingPlan,
   PairHistoryRow,
+  PairRuleKind,
   SchoolClass,
   SeatingChart,
   SeatLocks,
@@ -149,6 +151,15 @@ export async function updateDesks(
   });
 }
 
+/** Lagrer hvilke elever som skal sitte foran. */
+export async function updateFrontStudents(id: string, students: string[]): Promise<SchoolClass> {
+  return mutate((data) => {
+    const found = requireClass(data, id);
+    found.front_students = students;
+    return found;
+  });
+}
+
 /** Lagrer hvilke elever som er låst til hvilket sete. */
 export async function updateLocks(id: string, lockedSeats: SeatLocks): Promise<SchoolClass> {
   return mutate((data) => {
@@ -214,6 +225,9 @@ export async function deleteStudent(id: string): Promise<void> {
     );
     for (const found of data.classes) {
       if (found.locked_seats?.[id]) delete found.locked_seats[id];
+      if (found.front_students?.includes(id)) {
+        found.front_students = found.front_students.filter((s) => s !== id);
+      }
     }
     // Tida eleven hadde blir stående, men ledig. Å slette hele tida ville
     // flyttet alle de andre samtalene, og de er avtalt med noen.
@@ -311,21 +325,37 @@ export async function fetchApartPairs(classId: string): Promise<ApartPair[]> {
 export async function addApartPair(
   classId: string,
   studentA: string,
-  studentB: string
+  studentB: string,
+  kind: PairRuleKind
 ): Promise<ApartPair> {
   if (studentA === studentB) throw new Error("Velg to forskjellige elever.");
   const [a, b] = orderPair(studentA, studentB);
 
   return mutate((data) => {
+    // Ett par, én regel — uansett hvilken. «Sammen» og «ikke sammen» om de
+    // samme to ville bare gjort at fordelingen bryter én av dem hver gang.
     const finnes = data.apart_pairs.some(
       (p) => p.class_id === classId && p.student_a_id === a && p.student_b_id === b
     );
-    if (finnes) throw new Error("Regelen står i lista fra før.");
+    if (finnes) throw new Error("De to har en regel fra før.");
 
-    const created: ApartPair = { class_id: classId, student_a_id: a, student_b_id: b };
+    const created: ApartPair = { class_id: classId, student_a_id: a, student_b_id: b, kind };
     data.apart_pairs.push(created);
     return created;
   });
+}
+
+/** Reglene om elevpar i klassen, delt etter hva de sier, som kanoniske par-nøkler. */
+function pairRules(data: LocalData, classId: string): { apart: Set<string>; together: Set<string> } {
+  const apart = new Set<string>();
+  const together = new Set<string>();
+  for (const p of data.apart_pairs) {
+    if (p.class_id !== classId) continue;
+    (p.kind === "together" ? together : apart).add(
+      canonicalPairKey(p.student_a_id, p.student_b_id)
+    );
+  }
+  return { apart, together };
 }
 
 export async function removeApartPair(
@@ -381,10 +411,10 @@ export interface GenerateResult {
   newPairs: number;
   totalPairs: number;
   /**
-   * Par som måtte settes sammen likevel, fordi reglene ikke lot seg oppfylle.
-   * Læreren skal få vite det — ellers ser kartet riktig ut mens det ikke er det.
+   * Regler som ble brutt likevel, fordi de ikke lot seg oppfylle. Læreren skal
+   * få vite det — ellers ser kartet riktig ut mens det ikke er det.
    */
-  brokenRules: [string, string][];
+  brokenRules: RuleBreak[];
 }
 
 /** Lagrer en endret elevplassering (f.eks. etter at læreren har dratt en elev). */
@@ -465,21 +495,25 @@ export async function generateAndSaveChart(
       if (index !== undefined) pinned.set(studentId, index);
     }
 
-    const apart = new Set(
-      data.apart_pairs
-        .filter((p) => p.class_id === classId)
-        .map((p) => canonicalPairKey(p.student_a_id, p.student_b_id))
+    const { apart, together } = pairRules(data, classId);
+    // Elever som er slettet eller flyttet til en annen klasse teller ikke.
+    const studentIds = new Set(students.map((s) => s.id));
+    const front = new Set((found.front_students ?? []).filter((id) => studentIds.has(id)));
+    const frontIds = frontDeskIds(roomyDesks, front.size);
+    const frontGroups = new Set(
+      roomyDesks.flatMap((d, i) => (frontIds.has(d.id) ? [i] : []))
     );
+    const options = { pinned, apart, together, front, frontGroups };
 
     const historyMap = buildHistoryMap(data.pairs.filter((p) => p.class_id === classId));
     const groups = generateSeatingChart(
       students,
       roomyDesks.map((d) => d.seats),
       historyMap,
-      { pinned, apart }
+      options
     );
     const { newPairs, totalPairs } = countNewPairs(groups, historyMap);
-    const brokenRules = apartViolations(groups, apart);
+    const brokenRules = ruleBreaks(groups, options);
 
     // Låste elever settes på nøyaktig det setet de er låst til; resten fyller
     // setene som er igjen ved samme pult.
@@ -538,9 +572,9 @@ export async function fetchGroupSets(classId: string): Promise<GroupSet[]> {
 /**
  * Foreslår en gruppeinndeling: elevene fordeles på grupper på omtrent `size`
  * med samme algoritme som klassekartet, så de som ofte har sittet sammen ikke
- * havner i gruppe sammen igjen. Reglene om hvem som ikke skal sitte sammen
- * gjelder også her — en elev læreren holder fra hverandre ved bordet, skal
- * ikke settes i prosjektgruppe med den samme.
+ * havner i gruppe sammen igjen. Reglene om elevpar gjelder også her — en elev
+ * læreren holder fra hverandre ved bordet, skal ikke settes i prosjektgruppe
+ * med den samme, og to som skal sitte sammen havner i samme gruppe.
  *
  * Forslaget **lagres ikke**, og det telles ikke i par-historikken: historikken
  * handler om hvem som har sittet sammen i klasserommet, og en prosjektgruppe
@@ -551,15 +585,13 @@ export async function suggestGroups(classId: string, size: number): Promise<stri
     const students = data.students.filter((s) => s.class_id === classId).sort(byName);
     if (students.length === 0) throw new Error("Klassen har ingen elever ennå.");
 
-    const apart = new Set(
-      data.apart_pairs
-        .filter((p) => p.class_id === classId)
-        .map((p) => canonicalPairKey(p.student_a_id, p.student_b_id))
-    );
+    // «Foran» gjelder ikke her: en prosjektgruppe har ingen pult og ingen rad.
+    const { apart, together } = pairRules(data, classId);
     const historyMap = buildHistoryMap(data.pairs.filter((p) => p.class_id === classId));
 
     return generateSeatingChart(students, groupSizes(students.length, size), historyMap, {
       apart,
+      together,
     }).filter((group) => group.length > 0);
   });
 }

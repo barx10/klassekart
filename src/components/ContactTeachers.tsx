@@ -168,7 +168,7 @@ export default function ContactTeachers({ onNavigate, onRequestDelete }: Props) 
                   type="button"
                   onClick={() => setRedigerer(laerer.id)}
                   aria-label={`Endre navn på ${laerer.name}`}
-                  className="shrink-0 rounded p-1 text-subtle opacity-0 hover:text-foreground focus-visible:opacity-100 group-hover:opacity-100"
+                  className="shrink-0 rounded p-1 text-subtle hover:text-foreground"
                 >
                   <svg viewBox="0 0 16 16" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="1.5" aria-hidden>
                     <path d="M11 2.5l2.5 2.5L6 12.5 3 13l.5-3z" strokeLinecap="round" strokeLinejoin="round" />
@@ -178,7 +178,7 @@ export default function ContactTeachers({ onNavigate, onRequestDelete }: Props) 
                   type="button"
                   onClick={() => onRequestDelete({ id: laerer.id, name: laerer.name })}
                   aria-label={`Fjern ${laerer.name}`}
-                  className="mr-1 shrink-0 rounded p-1 text-subtle opacity-0 hover:text-danger focus-visible:opacity-100 group-hover:opacity-100"
+                  className="mr-1 shrink-0 rounded p-1 text-subtle hover:text-danger"
                 >
                   <svg viewBox="0 0 16 16" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="1.5" aria-hidden>
                     <path d="M3 4.5h10M6.5 4.5V3h3v1.5M4.5 4.5l.5 8h6l.5-8" strokeLinecap="round" strokeLinejoin="round" />

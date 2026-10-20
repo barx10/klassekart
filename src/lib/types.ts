@@ -51,6 +51,13 @@ export interface SchoolClass {
   desk_cols: number;
   /** Elever som er låst til et bestemt sete. Hører til klasserommet, ikke kartet. */
   locked_seats: SeatLocks;
+  /**
+   * Elever som skal sitte foran, nærmest tavla — for syn, hørsel eller
+   * konsentrasjon. Ulikt en lås gir regelen ikke et fast sete: eleven får nye
+   * sidemenn fra kart til kart, bare i fremste rad. Eldre lagringer mangler
+   * feltet, og leses som «ingen».
+   */
+  front_students?: string[];
   created_at: string;
 }
 
@@ -89,9 +96,20 @@ export interface GroupSet {
 }
 
 /**
- * Et elevpar læreren har bestemt at ikke skal sitte sammen. «Sammen» betyr
- * samme bord, slik resten av appen regner par: par-historikken og varmekartet
- * teller to elever som sammen når de sitter ved samme pult.
+ * Hva en regel om et elevpar sier: at de to ikke skal sitte ved samme bord
+ * («apart»), eller at de skal det («together») — en elev som trenger en fast
+ * støtte, eller to som deler et morsmål.
+ */
+export type PairRuleKind = "apart" | "together";
+
+/**
+ * En regel om et elevpar. «Sammen» betyr samme bord, slik resten av appen
+ * regner par: par-historikken og varmekartet teller to elever som sammen når
+ * de sitter ved samme pult.
+ *
+ * Navnet er fra den gangen bare «ikke sammen» fantes, og står igjen fordi
+ * lista lagres under `apart_pairs`. Et par kan bare ha én regel — begge deler
+ * på en gang gir ingen mening.
  *
  * Som `PairHistoryRow` har raden ingen id — klassen og de to elevene er
  * nøkkelen, og elevene lagres alltid i samme rekkefølge (`pairKey`).
@@ -100,6 +118,7 @@ export interface ApartPair {
   class_id: string;
   student_a_id: string;
   student_b_id: string;
+  kind: PairRuleKind;
 }
 
 export interface PairHistoryRow {

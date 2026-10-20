@@ -40,6 +40,7 @@ skole-PC-en», og det er en helt annen bakke å gå opp.
 | Klassekart – hvem som satt hvor, når | Ja |
 | Par-historikk | Ja – en liten sosial kartlegging av klassen over tid |
 | Gruppeinndelinger | Ja – hvem som har vært i gruppe med hvem |
+| Regler for plassering | Ja – hvem som ikke skal, eller skal, sitte sammen, og hvem som skal sitte foran |
 | Samtaletider | Ja – når en navngitt elev og familien møter læreren |
 
 Alt dette ligger nå i nettleseren til den som skrev det inn (IndexedDB), og
@@ -263,6 +264,11 @@ Det du ikke lagrer, trenger du ikke sikre, dokumentere eller slette.
   (`contact_teachers`) og ikke bare på hver elev, så de er også med i
   sikkerhetskopien — men de er navn på voksne kolleger, ikke på barn, og
   ligger som alt annet bare i denne nettleseren.
+- **Reglene for plassering har ingen begrunnelse** *(bygget)*. Det står bare
+  *at* to ikke skal sitte sammen, eller at en elev skal sitte foran, aldri
+  *hvorfor*. Det er nettopp grunnen som er sensitiv – et syn, en hørsel, en
+  diagnose, en konflikt – og den hører hjemme i skolens eget system. Regelen
+  alene kan likevel antyde noe, så fjern de som ikke trengs lenger.
 - **Par-historikk** nullstilles fra *Oversikt over par → Nullstill
   historikken* *(bygget)*. Gjør det ved skoleårets slutt – tellingene er bare
   interessante for inneværende klasse.

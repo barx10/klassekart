@@ -52,7 +52,7 @@ src/
     personvern/page.tsx         Personvernsiden læreren kan vise fram
   components/
     Sidebar.tsx                 Klasser, elever, tidligere kart, par-oversikt
-    ApartPairs.tsx              Elevpar som ikke skal sitte ved samme bord
+    SeatingRules.tsx            Regler: elevpar (ikke) sammen, hvem som sitter foran
     ClassroomCanvas.tsx         Klasserommet: pulter, draging, seter
     ClassroomView.tsx           Klassekartet i fullskjerm, til projektoren
     StudentGroups.tsx           Grupper til prosjektarbeid
@@ -229,9 +229,16 @@ ikke lenger stemmer, og `applyDesks` skriver låser og pulter i **samme**
 endring — ellers ville en lås til en fjernet pult blitt liggende usynlig og
 holdt eleven utenfor fordelingen for godt.
 
-#### Hvem som ikke skal sitte sammen
+#### Regler for plassering
 
-`apart_pairs` er elevpar læreren har bestemt at ikke skal settes ved samme bord.
+Tre regler: to elever skal **ikke** sitte ved samme bord, to elever **skal**
+sitte ved samme bord, og en elev skal **sitte foran**. Alle tre står i samme
+vindu (`SeatingRules`), og alle tre er straffer i kostfunksjonen med samme vekt.
+
+`apart_pairs` er reglene om elevpar. Navnet er fra den gangen bare «ikke
+sammen» fantes; `kind` er `"apart"` eller `"together"`, og et par kan bare ha
+én regel. Lista ble ikke omdøpt, for da måtte eldre sikkerhetskopier lest to
+navn.
 **«Sammen» betyr samme bord**, slik resten av appen regner par — par-historikken
 og varmekartet teller to elever som sammen når de sitter ved samme pult. En
 finere naboskapsmodell (sidemann kontra diagonalt ved en firergruppe) ville ikke
@@ -246,7 +253,25 @@ uten å være det, er verre enn ingen regel.
 
 Manuelle flyttinger **advares om, ikke nektes**: bryter læreren en regel for
 hånd, får bordet rød ramme og et merke. I øyeblikket er det læreren som vet
-best.
+best. Et par som skal sitte sammen men er skilt, merkes ved begge bordene.
+
+- **«Skal sitte sammen» regnes pult for pult.** Hver elev med en partner ved et
+  annet bord gir halv straff, så bruddet telles én gang til sammen, og et bytte
+  trenger fortsatt bare å se på de to pultene det gjelder.
+- **«Foran» er en rad, ikke et sete** (`front_students` på klassen). En lås gir
+  eleven samme sete og samme sidemann hver gang; regelen holder eleven nær
+  tavla og lar fordelingen variere resten. `frontDeskIds` finner fremste rad
+  med `bands()`, og tar med raden bak når det er flere som skal foran enn det
+  er plasser der. Advarselen i klasserommet bruker samme funksjon, så den og
+  genereringen er enige om hva «foran» er.
+- **Fremste rad fylles først i utgangsstillingen.** Byttene flytter elever
+  mellom pulter, aldri inn på et tomt sete, så de ledige plassene blir der
+  utgangsstillingen la dem. Uten den rekkefølgen kunne en tom pult foran stått
+  ubrukt mens eleven som skulle sitte der satt bak.
+- **Gruppene følger elevparene, ikke «foran».** En prosjektgruppe har ingen
+  pult og ingen rad.
+- **Ingen begrunnelse lagres**, for noen av reglene. Det er grunnen som er
+  sensitiv, og den hører ikke hjemme i en sikkerhetskopi.
 
 ### Klassekart og historikk
 
@@ -663,6 +688,10 @@ eller med lengde 0 ville ellers veltet samtalesida.
 
 Versjon 8 ga samtaletidene `done` — samtalen er holdt. Eldre kopier mangler
 feltet, og leses som «ikke holdt»; noe annet kunne vi ikke ha visst.
+
+Versjon 9 ga reglene om elevpar `kind` og klassene `front_students`. Eldre
+kopier har bare «ikke sammen», og leses slik; `front_students` mangler, og
+leses som «ingen».
 
 Versjon 7 ga samtaletidene dato i stedet for ukedagsnummer, og oppsettet feltet
 `weeks`. `normalizePlan()` regner om «dag 3» til datoen den dagen hadde i uka
