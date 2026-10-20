@@ -9,6 +9,7 @@ import {
   addRow,
   changeDeskSeats,
   desksOverlap,
+  frontDeskIds,
   removeColumn,
   removeRow,
   resetDeskSize,
@@ -91,6 +92,7 @@ export default function ClassDetailPage() {
     locks,
     toggleLock,
     apartPairs,
+    frontStudents,
     charts,
     activeChartId,
     moveStudent,
@@ -108,8 +110,29 @@ export default function ClassDetailPage() {
   );
 
   const apartKeys = useMemo(
-    () => new Set(apartPairs.map((p) => pairKey(p.student_a_id, p.student_b_id))),
+    () =>
+      new Set(
+        apartPairs
+          .filter((p) => p.kind === "apart")
+          .map((p) => pairKey(p.student_a_id, p.student_b_id))
+      ),
     [apartPairs]
+  );
+  const togetherKeys = useMemo(
+    () =>
+      new Set(
+        apartPairs
+          .filter((p) => p.kind === "together")
+          .map((p) => pairKey(p.student_a_id, p.student_b_id))
+      ),
+    [apartPairs]
+  );
+  const frontSet = useMemo(() => new Set(frontStudents), [frontStudents]);
+  // Samme utregning som genereringen bruker, så advarselen og kartet er enige
+  // om hva «foran» er.
+  const frontDesks = useMemo(
+    () => frontDeskIds(desks, frontStudents.length),
+    [desks, frontStudents.length]
   );
 
   const activeChart = charts.find((c) => c.id === activeChartId);
@@ -313,11 +336,19 @@ export default function ClassDetailPage() {
             >
               {plural(lastResult.brokenRules.length, "regel", "regler")} kunne ikke oppfylles:{" "}
               {lastResult.brokenRules
-                .map(([a, b]) =>
-                  `${studentsById.get(a)?.name ?? "?"} og ${studentsById.get(b)?.name ?? "?"}`
-                )
-                .join(", ")}{" "}
-              måtte settes ved samme bord. Flere bord, eller færre låste plasser, gir mer å gå på.
+                .map((brudd) => {
+                  const navn = (id: string) => studentsById.get(id)?.name ?? "?";
+                  switch (brudd.kind) {
+                    case "apart":
+                      return `${navn(brudd.a)} og ${navn(brudd.b)} måtte settes ved samme bord`;
+                    case "together":
+                      return `${navn(brudd.a)} og ${navn(brudd.b)} fikk ikke plass ved samme bord`;
+                    case "front":
+                      return `${navn(brudd.student)} fikk ikke plass foran`;
+                  }
+                })
+                .join(", ")}
+              . Flere bord, eller færre låste plasser, gir mer å gå på.
             </p>
           )}
         </div>
@@ -409,6 +440,9 @@ export default function ClassDetailPage() {
         studentsById={studentsById}
         locks={locks}
         apartKeys={apartKeys}
+        togetherKeys={togetherKeys}
+        frontStudents={frontSet}
+        frontDesks={frontDesks}
         onDesksChange={(next, persist) => {
           setDragging(!persist);
           applyDesks(next, undefined, persist);

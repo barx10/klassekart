@@ -7,7 +7,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { useAppData } from "@/lib/app-data";
 import StudentManager from "./StudentManager";
 import PairHeatmap from "./PairHeatmap";
-import ApartPairs from "./ApartPairs";
+import SeatingRules from "./SeatingRules";
 import StudentGroups from "./StudentGroups";
 import ContactTeachers from "./ContactTeachers";
 import HelpTip from "./HelpTip";
@@ -98,6 +98,7 @@ export default function Sidebar({ open, hidden, onClose, onHide, onAbout }: Prop
     pairHistory,
     resetPairHistory,
     apartPairs,
+    frontStudents,
     groupSets,
     deleteGroupSet,
     meetingPlans,
@@ -539,10 +540,10 @@ export default function Sidebar({ open, hidden, onClose, onHide, onAbout }: Prop
                 <circle cx="11.5" cy="6" r="2.2" />
                 <path d="M6.5 12.5h3" strokeLinecap="round" strokeDasharray="1 2" />
               </svg>
-              <span className="flex-1">Skal ikke sitte sammen</span>
-              {apartPairs.length > 0 && (
+              <span className="flex-1">Regler for plassering</span>
+              {apartPairs.length + frontStudents.length > 0 && (
                 <span className="rounded-full bg-background px-1.5 text-[11px] tabular-nums text-muted">
-                  {apartPairs.length}
+                  {apartPairs.length + frontStudents.length}
                 </span>
               )}
             </button>
@@ -678,8 +679,8 @@ export default function Sidebar({ open, hidden, onClose, onHide, onAbout }: Prop
 
       {showApart && activeClass && (
         <Modal
-          title={`Skal ikke sitte sammen – ${activeClass.name}`}
-          description="Elevpar som ikke skal settes ved samme bord når du genererer et klassekart."
+          title={`Regler for plassering – ${activeClass.name}`}
+          description="Hvem som skal eller ikke skal sitte ved samme bord, og hvem som skal sitte foran."
           onClose={() => setShowApart(false)}
           footer={
             <button
@@ -691,7 +692,7 @@ export default function Sidebar({ open, hidden, onClose, onHide, onAbout }: Prop
             </button>
           }
         >
-          <ApartPairs />
+          <SeatingRules />
         </Modal>
       )}
 

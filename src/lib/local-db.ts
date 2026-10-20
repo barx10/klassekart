@@ -47,8 +47,11 @@ const KEY = "state";
  *    uka oppsettet gjaldt, så en kopi fra versjon 6 leses uten tap.
  * 8: samtaletidene fikk `done` — samtalen er holdt. Eldre kopier mangler
  *    feltet, og leses som «ikke holdt». Noe annet kunne vi ikke ha visst.
+ * 9: to nye regler. Reglene om elevpar fikk `kind`, så et par også kan skulle
+ *    sitte sammen, og klassene fikk `front_students` — elever som skal sitte
+ *    foran. Eldre kopier har bare «ikke sammen», og ingen foran.
  */
-export const BACKUP_VERSION = 8;
+export const BACKUP_VERSION = 9;
 
 export interface LocalData {
   version: number;
@@ -142,7 +145,13 @@ function normalize(value: unknown): LocalData {
     contact_teachers: Array.isArray(raw.contact_teachers)
       ? raw.contact_teachers
       : contactTeachersFromNames(classes, students),
-    apart_pairs: Array.isArray(raw.apart_pairs) ? raw.apart_pairs : [],
+    // Før versjon 9 fantes bare «ikke sammen», og da sto det ingen `kind`.
+    apart_pairs: Array.isArray(raw.apart_pairs)
+      ? raw.apart_pairs.map((p) => ({
+          ...p,
+          kind: p.kind === "together" ? "together" : "apart",
+        }))
+      : [],
     groups: Array.isArray(raw.groups) ? raw.groups : [],
     // Et samtaleoppsett har både et skjema og en liste med tider, og begge
     // deler kan mangle i en eldre fil. `normalizePlan` fyller inn resten, og

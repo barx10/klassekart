@@ -279,6 +279,29 @@ function bands(desks: Desk[], kind: "row" | "column"): Desk[][] {
 }
 
 /**
+ * Pultene som regnes som «foran»: fremste rad, nærmest tavla. Tavla står
+ * øverst, slik den gjør i fullskjermvisningen og på utskriften.
+ *
+ * Er det flere som skal sitte foran enn fremste rad har plasser, tas neste rad
+ * med, og så videre. Ellers ville regelen vært umulig å oppfylle i et rom med
+ * tre topulter fremst og sju elever som trenger å se tavla — og «nest fremste
+ * rad» er nærmere det læreren mener enn et kart som sier at regelen brøt.
+ */
+export function frontDeskIds(desks: Desk[], count: number): Set<string> {
+  const ids = new Set<string>();
+  if (count <= 0) return ids;
+  let seats = 0;
+  for (const row of bands(desks, "row")) {
+    for (const desk of row) {
+      ids.add(desk.id);
+      seats += clampSeats(desk.seats);
+    }
+    if (seats >= count) break;
+  }
+  return ids;
+}
+
+/**
  * Stiller de merkede pultene på linje, rad for rad («row») eller kolonne for
  * kolonne («column»).
  *

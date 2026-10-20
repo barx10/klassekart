@@ -37,6 +37,15 @@ function shuffle<T>(arr: T[]): T[] {
 const APART_PENALTY = 1000;
 
 /**
+ * Det samme for de to andre reglene: et par som skal sitte sammen men havner
+ * ved hvert sitt bord, og en elev som skal sitte foran men havner lenger bak.
+ * Like tungt som «ikke sammen» — ingen av reglene er viktigere enn de andre, og
+ * alle tre veier mer enn historikken.
+ */
+const TOGETHER_PENALTY = 1000;
+const FRONT_PENALTY = 1000;
+
+/**
  * Hvor mange ganger fordelingen prøves på nytt når reglene brytes. Et brudd i
  * første forsøk er som regel uflaks i utgangsstillingen og ikke en umulig
  * regel; noen forsøk til koster millisekunder, og gjør «kunne ikke oppfylles»
@@ -54,19 +63,82 @@ export interface SeatingOptions {
   pinned?: Map<string, number>;
   /** Elevpar som ikke skal sitte ved samme bord, som kanoniske par-nøkler. */
   apart?: Set<string>;
+  /** Elevpar som skal sitte ved samme bord, som kanoniske par-nøkler. */
+  together?: Set<string>;
+  /** Elever som skal sitte foran. Teller bare når `frontGroups` er gitt. */
+  front?: Set<string>;
+  /**
+   * Plassene i `capacities` som er fremste rad. Gruppene til prosjektarbeid
+   * har ingen pulter og dermed ingen rad, og gir ingen.
+   */
+  frontGroups?: Set<number>;
 }
 
+/** En regel kartet ikke klarte å oppfylle. */
+export type RuleBreak =
+  | { kind: "apart"; a: string; b: string }
+  | { kind: "together"; a: string; b: string }
+  | { kind: "front"; student: string };
+
+/** Reglene slik herdingen bruker dem: alle felt fylt inn. */
+interface Rules {
+  apart: Set<string>;
+  /** Elev -> elevene den skal sitte med. */
+  partners: Map<string, string[]>;
+  front: Set<string>;
+  frontGroups: Set<number>;
+}
+
+function partnersOf(together: Set<string>): Map<string, string[]> {
+  const partners = new Map<string, string[]>();
+  for (const key of together) {
+    const [a, b] = key.split("_");
+    partners.set(a, [...(partners.get(a) ?? []), b]);
+    partners.set(b, [...(partners.get(b) ?? []), a]);
+  }
+  return partners;
+}
+
+function toRules(options: SeatingOptions): Rules {
+  const frontGroups = options.frontGroups ?? new Set<number>();
+  return {
+    apart: options.apart ?? new Set<string>(),
+    partners: partnersOf(options.together ?? new Set<string>()),
+    // Uten en fremste rad finnes det ikke noe «foran» å holde eleven til.
+    front: frontGroups.size > 0 ? (options.front ?? new Set<string>()) : new Set<string>(),
+    frontGroups,
+  };
+}
+
+function hasRules(rules: Rules): boolean {
+  return rules.apart.size > 0 || rules.partners.size > 0 || rules.front.size > 0;
+}
+
+/**
+ * Hva én pult koster. Alle tre reglene lar seg regne pult for pult, og det er
+ * det som gjør at et bytte bare trenger å se på de to pultene det gjelder.
+ *
+ * Et par som skal sitte sammen men sitter hver for seg, telles hos begge — med
+ * halv straff hver, så bruddet koster det samme som de andre reglene. Partneren
+ * ved et tredje bord flytter seg ikke i byttet, så bidraget derfra står i ro.
+ */
 function groupCost(
   group: string[],
+  index: number,
   historyMap: Map<string, number>,
-  apart: Set<string>
+  rules: Rules
 ): number {
   let cost = 0;
   for (let i = 0; i < group.length; i++) {
     for (let j = i + 1; j < group.length; j++) {
       const key = pairKey(group[i], group[j]);
       cost += historyMap.get(key) ?? 0;
-      if (apart.has(key)) cost += APART_PENALTY;
+      if (rules.apart.has(key)) cost += APART_PENALTY;
+    }
+    const id = group[i];
+    if (rules.front.has(id) && !rules.frontGroups.has(index)) cost += FRONT_PENALTY;
+    for (const partner of rules.partners.get(id) ?? []) {
+      if (!group.includes(partner)) cost += TOGETHER_PENALTY / 2;
     }
   }
   return cost;
@@ -76,6 +148,34 @@ function groupCost(
 export function apartViolations(groups: SeatingGroups, apart: Set<string>): [string, string][] {
   if (apart.size === 0) return [];
   return pairsFromGroups(groups).filter(([a, b]) => apart.has(pairKey(a, b)));
+}
+
+/** Alle reglene fordelingen bryter: par sammen, par fra hverandre, og hvem som sitter bak. */
+export function ruleBreaks(groups: SeatingGroups, options: SeatingOptions): RuleBreak[] {
+  const rules = toRules(options);
+  const breaks: RuleBreak[] = apartViolations(groups, rules.apart).map(([a, b]) => ({
+    kind: "apart",
+    a,
+    b,
+  }));
+
+  const groupOf = new Map<string, number>();
+  groups.forEach((group, i) => group.forEach((id) => groupOf.set(id, i)));
+
+  for (const key of options.together ?? []) {
+    const [a, b] = key.split("_");
+    // En elev som ikke er med i fordelingen, kan ikke bryte noe.
+    if (!groupOf.has(a) || !groupOf.has(b)) continue;
+    if (groupOf.get(a) !== groupOf.get(b)) breaks.push({ kind: "together", a, b });
+  }
+
+  for (const id of rules.front) {
+    const group = groupOf.get(id);
+    if (group !== undefined && !rules.frontGroups.has(group)) {
+      breaks.push({ kind: "front", student: id });
+    }
+  }
+  return breaks;
 }
 
 /**
@@ -108,8 +208,8 @@ export function groupSizes(count: number, size: number): number[] {
  * ingen pult blir overfylt.
  *
  * Låser og regler kommer inn gjennom `options` (se `SeatingOptions`). Er det
- * regler om hvem som ikke skal sitte sammen, prøves fordelingen på nytt til
- * ingen av dem brytes, eller til forsøkene er brukt opp. Det som blir igjen da,
+ * regler, prøves fordelingen på nytt til ingen av dem brytes, eller til
+ * forsøkene er brukt opp. Det som blir igjen da,
  * er regler som ikke lar seg oppfylle — og det skal læreren få vite.
  */
 export function generateSeatingChart(
@@ -120,15 +220,15 @@ export function generateSeatingChart(
 ): SeatingGroups {
   if (students.length === 0) return [];
 
-  const apart = options.apart ?? new Set<string>();
-  const attempts = apart.size > 0 ? APART_ATTEMPTS : 1;
+  const rules = toRules(options);
+  const attempts = hasRules(rules) ? APART_ATTEMPTS : 1;
 
-  let best = anneal(students, capacities, historyMap, options, apart);
-  let fewest = apartViolations(best, apart).length;
+  let best = anneal(students, capacities, historyMap, options, rules);
+  let fewest = ruleBreaks(best, options).length;
 
   for (let attempt = 1; attempt < attempts && fewest > 0; attempt++) {
-    const next = anneal(students, capacities, historyMap, options, apart);
-    const broken = apartViolations(next, apart).length;
+    const next = anneal(students, capacities, historyMap, options, rules);
+    const broken = ruleBreaks(next, options).length;
     if (broken < fewest) {
       best = next;
       fewest = broken;
@@ -143,7 +243,7 @@ function anneal(
   capacities: number[],
   historyMap: Map<string, number>,
   options: SeatingOptions,
-  apart: Set<string>
+  rules: Rules
 ): SeatingGroups {
   const pinned = options.pinned ?? new Map<string, number>();
   const ids = shuffle(students.map((s) => s.id));
@@ -173,11 +273,19 @@ function anneal(
     }
   }
 
-  let deskIndex = 0;
+  // Fremste rad fylles først. Byttene flytter bare elever mellom pulter, aldri
+  // inn på et tomt sete, så de ledige plassene blir der utgangsstillingen la
+  // dem — og da hører de bakerst, ikke foran tavla der noen skal sitte.
+  const indices = caps.map((_, i) => i);
+  const order = [
+    ...indices.filter((i) => rules.frontGroups.has(i)),
+    ...indices.filter((i) => !rules.frontGroups.has(i)),
+  ];
+  let next = 0;
   for (const id of free) {
-    while (deskIndex < numGroups && groups[deskIndex].length >= caps[deskIndex]) deskIndex++;
-    if (deskIndex >= numGroups) break;
-    groups[deskIndex].push(id);
+    while (next < order.length && groups[order[next]].length >= caps[order[next]]) next++;
+    if (next >= order.length) break;
+    groups[order[next]].push(id);
   }
 
   const iterations = Math.max(800, ids.length * 80);
@@ -192,13 +300,15 @@ function anneal(
     const i2 = Math.floor(Math.random() * groups[g2].length);
     if (locked.has(groups[g1][i1]) || locked.has(groups[g2][i2])) continue;
 
-    const before = groupCost(groups[g1], historyMap, apart) + groupCost(groups[g2], historyMap, apart);
+    const before =
+      groupCost(groups[g1], g1, historyMap, rules) + groupCost(groups[g2], g2, historyMap, rules);
 
     const tmp = groups[g1][i1];
     groups[g1][i1] = groups[g2][i2];
     groups[g2][i2] = tmp;
 
-    const after = groupCost(groups[g1], historyMap, apart) + groupCost(groups[g2], historyMap, apart);
+    const after =
+      groupCost(groups[g1], g1, historyMap, rules) + groupCost(groups[g2], g2, historyMap, rules);
     const delta = after - before;
 
     const accept = delta <= 0 || Math.random() < Math.exp(-delta / (temperature + 0.05));

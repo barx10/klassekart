@@ -40,6 +40,11 @@ interface Props {
   locks: SeatLocks;
   /** Elevpar som ikke skal sitte ved samme bord, som kanoniske par-nøkler. */
   apartKeys: Set<string>;
+  /** Elevpar som skal sitte ved samme bord, som kanoniske par-nøkler. */
+  togetherKeys: Set<string>;
+  /** Elever som skal sitte foran, og pultene som regnes som foran. */
+  frontStudents: Set<string>;
+  frontDesks: Set<string>;
   /** Kalles mens pulter dras (persist=false) og når de slippes (persist=true). */
   onDesksChange: (desks: Desk[], persist: boolean) => void;
   onRemoveDesks: (deskIds: string[]) => void;
@@ -167,6 +172,9 @@ export default function ClassroomCanvas({
   studentsById,
   locks,
   apartKeys,
+  togetherKeys,
+  frontStudents,
+  frontDesks,
   onDesksChange,
   onRemoveDesks,
   onSeatsChange,
@@ -207,29 +215,50 @@ export default function ClassroomCanvas({
   const many = selectedDesks.length > 1;
 
   /**
-   * Bord der to elever sitter sammen som ikke skal det. Genereringen holder dem
-   * fra hverandre, men læreren kan dra dem sammen etterpå — og skal få lov: i
-   * øyeblikket vet hen best. Da sier vi fra i stedet for å nekte.
+   * Bord der en regel er brutt: to som ikke skal sitte sammen gjør det, to som
+   * skal sitte sammen sitter hver for seg, eller en som skal sitte foran sitter
+   * lenger bak. Genereringen følger reglene, men læreren kan flytte elevene
+   * etterpå — og skal få lov: i øyeblikket vet hen best. Da sier vi fra i
+   * stedet for å nekte. Et par som er skilt merkes ved begge bordene.
    */
   const conflicts = useMemo(() => {
     const perDesk = new Map<string, string[]>();
-    if (apartKeys.size === 0) return perDesk;
+    if (apartKeys.size === 0 && togetherKeys.size === 0 && frontStudents.size === 0) {
+      return perDesk;
+    }
+    const name = (id: string) => studentsById.get(id)?.name ?? "Eleven";
+    const add = (deskId: string, text: string) =>
+      perDesk.set(deskId, [...(perDesk.get(deskId) ?? []), text]);
+
+    const deskOf = new Map<string, string>();
+    for (const desk of desks) {
+      for (const id of assignments[desk.id] ?? []) if (id) deskOf.set(id, desk.id);
+    }
 
     for (const desk of desks) {
       const seated = (assignments[desk.id] ?? []).filter((id): id is string => Boolean(id));
-      const brutt: string[] = [];
       for (let i = 0; i < seated.length; i++) {
         for (let j = i + 1; j < seated.length; j++) {
           if (!apartKeys.has(pairKey(seated[i], seated[j]))) continue;
-          const a = studentsById.get(seated[i])?.name ?? "Eleven";
-          const b = studentsById.get(seated[j])?.name ?? "eleven";
-          brutt.push(`${a} og ${b}`);
+          add(desk.id, `${name(seated[i])} og ${name(seated[j])} skal ikke sitte sammen`);
+        }
+        if (frontStudents.has(seated[i]) && !frontDesks.has(desk.id)) {
+          add(desk.id, `${name(seated[i])} skal sitte foran`);
         }
       }
-      if (brutt.length > 0) perDesk.set(desk.id, brutt);
+    }
+
+    for (const key of togetherKeys) {
+      const [a, b] = key.split("_");
+      const deskA = deskOf.get(a);
+      const deskB = deskOf.get(b);
+      if (!deskA || !deskB || deskA === deskB) continue;
+      const text = `${name(a)} og ${name(b)} skal sitte sammen`;
+      add(deskA, text);
+      add(deskB, text);
     }
     return perDesk;
-  }, [desks, assignments, apartKeys, studentsById]);
+  }, [desks, assignments, apartKeys, togetherKeys, frontStudents, frontDesks, studentsById]);
 
   // --- Lerretets mål og zoom ----------------------------------------------
   // Klasserommet er ofte bredere enn skjermen. Før måtte du dra i et rullefelt
@@ -845,11 +874,11 @@ export default function ClassroomCanvas({
                     {brutt && (
                       <span
                         data-print-hide
-                        title={`${brutt.join(", ")} skal ikke sitte sammen`}
+                        title={`${brutt.join(". ")}.`}
                         className="absolute -top-1.5 -left-1.5 z-30 flex h-4 w-4 items-center justify-center rounded-full bg-danger text-[11px] font-bold text-white"
                       >
                         <span aria-hidden>!</span>
-                        <span className="sr-only">{brutt.join(", ")} skal ikke sitte sammen.</span>
+                        <span className="sr-only">{brutt.join(". ")}.</span>
                       </span>
                     )}
 

@@ -41,10 +41,11 @@ import {
   generateAndSaveChart,
   updateChartLayout,
   updateDesks,
+  updateFrontStudents,
   updateLocks,
 } from "./api";
 import { clampSeats, normalizeDesks, sameLocks, validLocks } from "./classroom";
-import { pairsFromAssignments } from "./seating";
+import { pairsFromAssignments, type RuleBreak } from "./seating";
 import type {
   ApartPair,
   ContactTeacher,
@@ -55,6 +56,7 @@ import type {
   MeetingKind,
   MeetingPlan,
   PairHistoryRow,
+  PairRuleKind,
   SchoolClass,
   SeatingChart,
   SeatLocks,
@@ -98,10 +100,13 @@ interface AppDataValue {
   pairHistory: PairHistoryRow[];
   /** Nullstiller par-historikken for klassen som vises (skoleårsslutt). */
   resetPairHistory: () => Promise<void>;
-  /** Elevpar i klassen som ikke skal sitte ved samme bord. */
+  /** Regler om elevpar i klassen: hvem som ikke skal, og hvem som skal sitte sammen. */
   apartPairs: ApartPair[];
-  addApartPair: (studentA: string, studentB: string) => Promise<void>;
+  addApartPair: (studentA: string, studentB: string, kind: PairRuleKind) => Promise<void>;
   removeApartPair: (studentA: string, studentB: string) => Promise<void>;
+  /** Elever i klassen som skal sitte foran, nærmest tavla. */
+  frontStudents: string[];
+  toggleFront: (studentId: string) => void;
 
   /** Lagrede gruppeinndelinger for klassen — til prosjekter og aktiviteter. */
   groupSets: GroupSet[];
@@ -143,7 +148,7 @@ interface AppDataValue {
   ) => void;
   generate: () => Promise<void>;
   generating: boolean;
-  lastResult: { newPairs: number; totalPairs: number; brokenRules: [string, string][] } | null;
+  lastResult: { newPairs: number; totalPairs: number; brokenRules: RuleBreak[] } | null;
   classLoading: boolean;
   /** Leser alt inn på nytt fra lagringen — etter at en sikkerhetskopi er hentet inn. */
   reload: () => Promise<void>;
@@ -183,7 +188,7 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
       classId: string;
       newPairs: number;
       totalPairs: number;
-      brokenRules: [string, string][];
+      brokenRules: RuleBreak[];
     } | null
   >(null);
 
@@ -324,6 +329,12 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
     [activeClass, desks, activeStudents]
   );
 
+  // Som låsene: bare elever som faktisk går i klassen nå.
+  const frontStudents = useMemo(() => {
+    const ids = new Set(activeStudents.map((s) => s.id));
+    return (activeClass?.front_students ?? []).filter((id) => ids.has(id));
+  }, [activeClass, activeStudents]);
+
   // --- Endringer -----------------------------------------------------------
 
   const applyDesks = useCallback(
@@ -455,10 +466,26 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
     [refreshTeachers]
   );
 
-  const addApartPair = useCallback(
-    async (studentA: string, studentB: string) => {
+  const toggleFront = useCallback(
+    (studentId: string) => {
       if (!activeClassId) return;
-      const created = await apiAddApartPair(activeClassId, studentA, studentB);
+      const next = frontStudents.includes(studentId)
+        ? frontStudents.filter((id) => id !== studentId)
+        : [...frontStudents, studentId];
+      setClasses((prev) =>
+        prev.map((c) => (c.id === activeClassId ? { ...c, front_students: next } : c))
+      );
+      updateFrontStudents(activeClassId, next).catch((e) =>
+        setError(e instanceof Error ? e.message : String(e))
+      );
+    },
+    [activeClassId, frontStudents]
+  );
+
+  const addApartPair = useCallback(
+    async (studentA: string, studentB: string, kind: PairRuleKind) => {
+      if (!activeClassId) return;
+      const created = await apiAddApartPair(activeClassId, studentA, studentB, kind);
       setApartPairs((prev) => [...prev, created]);
     },
     [activeClassId]
@@ -689,6 +716,8 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
       apartPairs,
       addApartPair,
       removeApartPair,
+      frontStudents,
+      toggleFront,
       groupSets,
       suggestGroups,
       saveGroupSet,
@@ -738,6 +767,8 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
       apartPairs,
       addApartPair,
       removeApartPair,
+      frontStudents,
+      toggleFront,
       groupSets,
       suggestGroups,
       saveGroupSet,
