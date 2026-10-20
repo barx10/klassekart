@@ -76,6 +76,7 @@ src/
     api.ts                      Datalaget: klasser, elever, kart, par
     local-db.ts                 Lagring i nettleseren (IndexedDB) + sikkerhetskopi
     backup-file.ts              Får sikkerhetskopien ned på maskinen
+    chart-image.ts              Klassekartet tegnet som bilde (PNG/JPG)
     types.ts                    Delte typer
 docs/personvern.md              Vurderingene bak, og veien videre om appen skal deles
 ```
@@ -178,6 +179,9 @@ Klassekartet havner på papir, og der er det navnene som er hele poenget.
   ut, slik `justify-content: center` ville gjort. Personvernsida holdes utenfor
   begge deler: den er vanlig tekst som skal flyte over så mange sider den
   trenger, med bunnteksten på.
+- **Ingen dato på arket eller i fullskjermvisningen.** Læreren lager kartet i
+  forkant, og datoen det ble laget stemmer sjelden med dagen det vises. En dato
+  læreren ikke kan fjerne er verre enn ingen.
 - **Overskrifta på papiret er en egen, midtstilt blokk.** Skjermversjonen står
   til venstre i en spalte som er bredere enn arket, og der forsvant klassenavnet
   ut over margen.
@@ -585,6 +589,22 @@ dessuten bokmerkes og åpnes rett før samtalen.
   klassekartet og samtalearket som krever det formatet — og én spalte tvers over
   en slik side gir linjer ingen finner tilbake til. Med to spalter får begge
   settene plass på én side.
+
+#### Bildet
+
+«Lagre som bilde» og «Kopier bilde» gir kartet som PNG eller JPG, til å lime
+inn i et dokument eller en presentasjon. PDF fra utskriften er tungt å
+redigere og kopiere fra.
+
+- **Bildet tegnes fra dataene** (`drawChartImage`), ikke fotograferes av sida.
+  Lerretet er en editor med håndtak og en zoom som følger vinduet, og å ta
+  bilde av det ville krevd et bibliotek som kopierer stilarkene.
+- **Fargene er de lyse også i mørk modus.** Bildet skal inn i et dokument, og
+  der er bakgrunnen hvit.
+- **Formatet følger filnavnet** i «Lagre som»: `.jpg` gir JPG, ellers PNG.
+  Uten «Lagre som» (Safari, Firefox) blir det PNG.
+- **Utklippstavla får et løfte og ikke en ferdig blob.** Safari godtar bare
+  utklippstavla mens klikket pågår, og `toBlob` er asynkron.
 
 ### Fullskjermvisningen
 

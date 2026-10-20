@@ -17,11 +17,12 @@ interface SaveFilePickerOptions {
 }
 
 interface FileSystemWritable {
-  write: (data: string) => Promise<void>;
+  write: (data: string | Blob) => Promise<void>;
   close: () => Promise<void>;
 }
 
 interface SaveFileHandle {
+  name: string;
   createWritable: () => Promise<FileSystemWritable>;
 }
 
@@ -58,8 +59,9 @@ const KINDS: Record<SaveKind, { mime: string; description: string; extension: st
 };
 
 /** Den gamle veien: en usynlig lenke som klikkes, og fila havner i Nedlastinger. */
-function download(text: string, filename: string, mime: string) {
-  const url = URL.createObjectURL(new Blob([text], { type: mime }));
+function download(data: string | Blob, filename: string, mime: string) {
+  const blob = typeof data === "string" ? new Blob([data], { type: mime }) : data;
+  const url = URL.createObjectURL(blob);
   const link = document.createElement("a");
   link.href = url;
   link.download = filename;
@@ -102,5 +104,45 @@ export async function saveTextToFile(
 
   const writable = await handle.createWritable();
   await writable.write(text);
+  await writable.close();
+}
+
+/** Bildeformatene klassekartet kan lagres som. */
+const IMAGE_TYPES: NonNullable<SaveFilePickerOptions["types"]> = [
+  { description: "PNG-bilde", accept: { "image/png": [".png"] } },
+  { description: "JPG-bilde", accept: { "image/jpeg": [".jpg", ".jpeg"] } },
+];
+
+/**
+ * Lagrer et bilde. Formatet følger navnet læreren gir fila i «Lagre som»:
+ * slutter det på .jpg, blir det JPG, ellers PNG. Derfor tar funksjonen en
+ * koder og ikke et ferdig bilde — formatet er ikke kjent før vinduet er lukket.
+ *
+ * Uten «Lagre som» blir det PNG. Skarpe kanter og tekst er det PNG er laget
+ * for, og alle bildeprogrammer leser det.
+ */
+export async function saveImageToFile(
+  encode: (mime: "image/png" | "image/jpeg") => Promise<Blob>,
+  baseName: string
+): Promise<void> {
+  const picker = (window as PickerWindow).showSaveFilePicker;
+  if (!picker) {
+    download(await encode("image/png"), `${baseName}.png`, "image/png");
+    return;
+  }
+
+  let handle: SaveFileHandle;
+  try {
+    handle = await picker({ suggestedName: `${baseName}.png`, types: IMAGE_TYPES });
+  } catch (e) {
+    if (e instanceof DOMException && e.name === "AbortError") throw new SaveCancelled();
+    download(await encode("image/png"), `${baseName}.png`, "image/png");
+    return;
+  }
+
+  const mime = /\.jpe?g$/i.test(handle.name) ? "image/jpeg" : "image/png";
+  const blob = await encode(mime);
+  const writable = await handle.createWritable();
+  await writable.write(blob);
   await writable.close();
 }

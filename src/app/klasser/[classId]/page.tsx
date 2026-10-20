@@ -21,6 +21,8 @@ import {
 import ClassroomCanvas from "@/components/ClassroomCanvas";
 import ClassroomView from "@/components/ClassroomView";
 import { plural, primaryButton, secondaryButton } from "@/lib/ui";
+import { SaveCancelled, saveImageToFile } from "@/lib/backup-file";
+import { canvasToBlob, chartFileName, drawChartImage } from "@/lib/chart-image";
 
 /** −/+ rundt en verdi. Verdien vises, så du ser hva du justerer. */
 function Stepper({
@@ -122,6 +124,48 @@ export default function ClassDetailPage() {
   /** Fullskjermvisningen av kartet — til projektoren, uten noe å klikke på. */
   const [showing, setShowing] = useState(false);
 
+  /** Kvitteringen etter «Kopier bilde» — utklippstavla sier ikke fra selv. */
+  const [copied, setCopied] = useState(false);
+
+  /**
+   * Klassekartet som bilde. PDF fra utskriften er tungt å redigere og kopiere
+   * fra; et bilde kan limes rett inn i et dokument eller en presentasjon.
+   */
+  function chartImage() {
+    return drawChartImage({
+      className: activeClass?.name ?? "",
+      desks,
+      assignments,
+      studentsById,
+    });
+  }
+
+  async function saveImage() {
+    const canvas = chartImage();
+    try {
+      await saveImageToFile(
+        (mime) => canvasToBlob(canvas, mime),
+        chartFileName(activeClass?.name ?? "")
+      );
+    } catch (e) {
+      if (e instanceof SaveCancelled) return;
+      setError(e instanceof Error ? e.message : "Bildet kunne ikke lagres.");
+    }
+  }
+
+  async function copyImage() {
+    // Bildet gis som et løfte og ikke et ferdig blob: Safari godtar bare
+    // utklippstavla mens klikket fortsatt pågår, og `toBlob` er asynkron.
+    const blob = canvasToBlob(chartImage(), "image/png");
+    try {
+      await navigator.clipboard.write([new ClipboardItem({ "image/png": blob })]);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      setError("Nettleseren lot oss ikke kopiere bildet. Bruk «Lagre som bilde» i stedet.");
+    }
+  }
+
   if (loading)
     return (
       <p className="text-sm text-muted" role="status">
@@ -139,15 +183,14 @@ export default function ClassDetailPage() {
     <div className="mx-auto max-w-6xl print:max-w-none">
       {/* Overskrifta på papiret. Den skjermversjonen som står under er venstre-
           stilt og ligger i en spalte som er bredere enn arket — der forsvant
-          klassenavnet ut over margen. Her står navn og dato midtstilt over
-          kartet, innenfor margene, slik læreren kjenner det igjen på pulten. */}
+          klassenavnet ut over margen. Her står navnet midtstilt over kartet,
+          innenfor margene, slik læreren kjenner det igjen på pulten.
+
+          Datoen kartet ble laget står ikke på arket. Læreren lager kartet i
+          forkant, og en dato som ikke stemmer med dagen kartet henges opp kan
+          ikke viskes bort. */}
       <div aria-hidden className="mb-4 hidden text-center print:block">
         <p className="text-2xl font-bold">{activeClass.name}</p>
-        <p className="mt-0.5 text-sm text-muted">
-          {activeChart
-            ? `Klassekart ${new Date(activeChart.created_at).toLocaleDateString("nb-NO")}`
-            : "Klassekart"}
-        </p>
       </div>
 
       <div className="mb-4 flex flex-wrap items-start justify-between gap-3 print:hidden">
@@ -183,6 +226,32 @@ export default function ClassDetailPage() {
             className={secondaryButton()}
           >
             Vis klassekart
+          </button>
+          <button
+            type="button"
+            onClick={saveImage}
+            disabled={!activeChart}
+            title={
+              activeChart
+                ? "Lagre klassekartet som PNG eller JPG"
+                : "Generer et klassekart først"
+            }
+            className={secondaryButton()}
+          >
+            Lagre som bilde
+          </button>
+          <button
+            type="button"
+            onClick={copyImage}
+            disabled={!activeChart}
+            title={
+              activeChart
+                ? "Kopier klassekartet som bilde, til å lime inn i et dokument"
+                : "Generer et klassekart først"
+            }
+            className={secondaryButton()}
+          >
+            <span aria-live="polite">{copied ? "Kopiert" : "Kopier bilde"}</span>
           </button>
           <button
             type="button"
@@ -367,7 +436,6 @@ export default function ClassDetailPage() {
           desks={desks}
           assignments={assignments}
           studentsById={studentsById}
-          chartDate={new Date(activeChart.created_at).toLocaleDateString("nb-NO")}
           onClose={() => setShowing(false)}
         />
       )}
