@@ -148,19 +148,22 @@ export default function ApartPairs() {
             {rader.map((rad) => (
               <li
                 key={rad.key}
-                className="group flex items-center gap-2 rounded-md px-2 py-1.5 text-sm hover:bg-background"
+                className="flex items-center gap-2 rounded-md px-2 py-1.5 text-sm hover:bg-background"
               >
                 <span className="flex flex-1 flex-wrap items-center gap-x-2 gap-y-0.5">
                   <Navn id={rad.ids[0]} />
                   <span className="text-xs text-subtle">og</span>
                   <Navn id={rad.ids[1]} />
                 </span>
+                {/* Krysset står der hele tiden. Det var usynlig til musa sto over
+                    raden, og på nettbrett kom det aldri fram — da gikk det ikke
+                    an å fjerne en regel. */}
                 <button
                   type="button"
                   onClick={() => fjern(rad.ids)}
                   aria-label={`Fjern regelen om ${rad.a!.name} og ${rad.b!.name}`}
                   title="Fjern regelen"
-                  className="rounded p-1 text-subtle opacity-0 hover:bg-danger-soft hover:text-danger focus-visible:opacity-100 group-hover:opacity-100"
+                  className="shrink-0 rounded p-1 text-subtle hover:bg-danger-soft hover:text-danger"
                 >
                   <svg
                     viewBox="0 0 16 16"
@@ -170,11 +173,7 @@ export default function ApartPairs() {
                     strokeWidth="1.6"
                     aria-hidden
                   >
-                    <path
-                      d="M3 4.5h10M6.5 4.5V3h3v1.5M4.5 4.5l.5 8h6l.5-8"
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                    />
+                    <path d="M4 4l8 8M12 4l-8 8" strokeLinecap="round" />
                   </svg>
                 </button>
               </li>

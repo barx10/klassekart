@@ -334,7 +334,7 @@ export default function Sidebar({ open, hidden, onClose, onHide, onAbout }: Prop
                       onClick={() => setPendingDelete({ id: c.id, name: c.name })}
                       aria-label={`Slett ${c.name}`}
                       title={`Slett ${c.name}`}
-                      className="mr-0.5 rounded p-1.5 text-subtle opacity-0 hover:bg-danger-soft hover:text-danger focus-visible:opacity-100 group-hover:opacity-100"
+                      className="mr-0.5 rounded p-1.5 text-subtle hover:bg-danger-soft hover:text-danger"
                     >
                       <svg viewBox="0 0 16 16" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="1.6" aria-hidden>
                         <path d="M3 4.5h10M6.5 4.5V3h3v1.5M4.5 4.5l.5 8h6l.5-8" strokeLinecap="round" strokeLinejoin="round" />
